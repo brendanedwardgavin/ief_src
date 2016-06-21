@@ -1,0 +1,2 @@
+all:	
+	ifort ../feast_gmres.f90 time_sdfeastgmres.f90 ../../myFeast3.0/lib/x64/libfeast.a ../../myFeast3.0/lib/x64/libfeast_sparse.a -fpp -mkl -traceback -o time_sdfeastgmres

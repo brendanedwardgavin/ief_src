@@ -1,0 +1,59 @@
+subroutine zspike_gbtrf(spm,n,kl,ku,A,lda,work,info)
+! This subroutine performs the SPIKE DS factorization
+! NOTE : This subroutine naturally destroys A, so if you 
+! calling this subroutine.
+end subroutine zspike_gbtrf
+subroutine zspike_gbtrs(spm,trans,n,kl,ku,nrhs,A,lda,work,B,ldb)
+! This subroutine performs the SPIKE solve
+end subroutine zspike_gbtrs
+subroutine zspike_gbtrsi(spm,trans,n,kl,ku,nrhs,C,ldc,A,lda,work,B,ldb)
+! This subroutine performs the SPIKE solve with iterative refinement
+end subroutine zspike_gbtrsi
+subroutine zspike_gbsv(spm,N,KL,KU,NRHS,A,LDA,B,LDB,INFO)
+! This is the do-it-all factorize and solve subroutine. 
+! If the optimization flag spm(2)=2 is set, this subroutine 
+! This subroutine may attempt to find K, but finding K requires a 
+end subroutine zspike_gbsv 
+subroutine zspike_tune(spm)
+end subroutine
+subroutine zspike_gbtrf2(spm,n,kl,ku,A,lda,rV,rW,red,info)
+! This is the subroutine that ultimately does the work of the
+! interface. The subroutine zspike_gbtrf should be used instead. 
+! Must be communicated to the solve subroutine
+end subroutine zspike_gbtrf2
+subroutine zspike_gbtrs2(spm,n,kl,ku,lda,nrhs,A,rV,rW,red,f,ldf)
+! This is the subroutine that ultimately does the work of the
+! interface. The subroutine zspike_gbtrs should be used instead. 
+! Came from the factorization subroutine
+end subroutine zspike_gbtrs2
+subroutine zspike_gbtrst2(spm,trans,n,kl,ku,lda,nrhs,A,rV,rW,red,f,ldf)
+! This is the subroutine that ultimately does the work of the
+! interface. The subroutine zspike_gbtrs should be used instead. 
+! Came from the factorization subroutine
+end subroutine zspike_gbtrst2
+subroutine zspike_itrefinement(spm,trans,n,kl,ku,nrhs,A,work,lda,C,ldc,B,oB,ldb)
+end subroutine zspike_itrefinement
+subroutine zspike_matmul(spm,Ajmin,trans,n,kl,ku,nrhs,C,ldc,B,ldb,res)
+end subroutine zspike_matmul
+subroutine zspike_multi(invred,klu,nrhs,A,xb,ldb,xt,ldt)
+end subroutine  zspike_multi
+ subroutine  zspike_invred(invred,klu,V,W,redA)
+end subroutine zspike_invred
+subroutine zspike_prep_recn(invred,kl,ku,rV,rW,redA,nbpart,nblevel) 
+end subroutine zspike_prep_recn
+subroutine zspike_solve_recn(invred,kl,ku,nrhs,rV,rW,redA,nbpart,nblevel,grj)
+end subroutine zspike_solve_recn
+subroutine zspike_solve_recn_transpose(trans,kl,ku,nrhs,rV,rW,redA,nbpart,nblevel,grj) 
+end subroutine zspike_solve_recn_transpose
+subroutine zspike_multi_transpose(trans,klu,nrhs,red,xb,ldxb,xt,ldxt)
+end subroutine zspike_multi_transpose
+subroutine zspike_GBTRFk2(n,kl,ku,A,lda,info,keys)
+end subroutine zspike_GBTRFk2
+subroutine zspike_GBTRSk2(trans,n,nrhs,kl,ku,A,lda,B,ldb,keys,red,grj,zeroskip)
+end subroutine zspike_GBTRSk2
+subroutine zspike_simple_solve(n,nrhs,kl,ku,A,lda,f,ldf,info,keys,red,grj,zeroskip)
+end subroutine zspike_simple_solve
+subroutine zspike_simple_solve_transpose(n,trans,nrhs,kl,ku,A,lda,f,ldf,info,keys,red,grj)
+end subroutine zspike_simple_solve_transpose
+subroutine zspike_vector_norm(spm,norm,x,n,nrhs,dnorm)
+end subroutine zspike_vector_norm
