@@ -1,6 +1,10 @@
 #!/usr/bin/python
 import os
 
+outfolder="../experiments/nos5_lowedge_cpvslinit_fr5"
+os.chdir("/home/bgavin/inexactFEAST/bin")      
+
+
 #lower range for first 15 eigenvalues:
 emin=0.0
 emax=(1041.0+1231.0)/2
@@ -13,8 +17,8 @@ int=0
 linkspace=1
 lineps=16
 
-cps=range(1,21)
-linitss=range(2,21)
+cps=range(1,21) #21
+linitss=range(2,21) #21
 
 outputtimes=""
 outputfres=""
@@ -29,9 +33,6 @@ for cp in cps:
     for linits in linitss:
         
         #def runtest(m0,cp,maxloop,ellipse,int,linkspace,linits,lineps):
-        outfolder="../experiments/nos5_lowedge_cpvslinit_fr5"
-        os.chdir("/home/bgavin/inexactFEAST/bin")      
-
         ffstr="s\ne !eigenvalue problem type\nd !precision\n"
         ffstr=ffstr+"L !UPLO\n"+str(emin)+" !emin\n"+str(emax)+" !emax\n"
         ffstr=ffstr+str(m0)+" !m0\n11 !#fpm\n1 1 !comments\n2 "+str(cp)+" !contour points\n"
@@ -71,11 +72,11 @@ for cp in cps:
         outputfres=outputfres+","+filelines[0].strip() #save time
         finalvalsfile.close()
        
-ff.open(outfolder+"/timesmatrix.dat")
+ff=open(outfolder+"/timesmatrix.dat","w")
 ff.write(outputtimes)
 ff.close()
 
        
-ff.open(outfolder+"/floopmatrix.dat")
+ff=open(outfolder+"/floopmatrix.dat","w")
 ff.write(outputfres)
 ff.close()
