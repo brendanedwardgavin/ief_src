@@ -5,7 +5,7 @@ implicit none
     double precision :: emin,emax,r,h
     integer :: samples,ellipse_percent,ncp
 
-    complex(kind=(kind(1.0d0))), dimension(:,:),allocatable :: A,B,X,eye,Az
+    complex(kind=(kind(1.0d0))), dimension(:,:),allocatable :: A,B,X
 
     integer :: ellipse_samples !number of samples for drawing ellipse in gnuplot
 
@@ -13,16 +13,10 @@ implicit none
     integer, dimension(1:64) :: fpm
     double precision :: epsout
     double precision, dimension(:),allocatable :: res
-    integer :: loop,m,m0,info,p,n,lda,ldb,ijob
+    integer :: loop,m,m0,info,p,n,lda,ldb
     complex(kind=(kind(1.0d0))),dimension(:),allocatable :: e,Zne,Wne,Zedge
-    complex (kind=kind(0.0d0)), dimension(:,:), allocatable :: zwork,work,aq,bq
-    complex (kind=kind(0.0d0)) :: ze,ze2
     complex(kind=(kind(1.0d0))) :: emid
     integer, dimension(:),allocatable :: nedge,tedge
-
-    !lapack:
-    integer :: infolap
-    integer, dimension(:), allocatable :: ipiv
 
     if (iargc()<5) then
         print *,"         Missing arguments. Usage: ./rational_function emin emax samples height #contourpoints"
@@ -48,8 +42,7 @@ implicit none
     n=samples
 
     allocate(A(n,n),B(n,n),e(m0),X(n,m0),res(2*m0))
-    allocate(eye(n,n),Az(n,n),work(n,m0),zwork(n,m0),aq(m0,m0),bq(m0,m0))
-    allocate(ipiv(n))
+
     !fill in A
 
 
@@ -60,11 +53,9 @@ implicit none
 
     X=0.0d0
     A=0.0d0
-    eye=0.0d0
     do i=1,samples
         X(i,i)=(1.0d0,0.0d0)
         A(i,i)=(-1.0d0,0.0d0)+(1.0d0,0.0d0)*dble(i-1)*2/dble(samples)
-        eye(i,i)=(1.0d0,0.0d0)
     end do
 
 
@@ -95,55 +86,8 @@ implicit none
     
     emid=(0.0d0,0.0d0)
     r=0.5
-   
-    ijob=-1
-    do while(ijob .ne. 0)
-    call zfeast_grcix(ijob,n,ze,work,zwork,aq,bq,fpm,epsout,loop,emid,r,m0,e,x,m,res,info,Zne,Wne)
-    
-    select case (ijob)
-		case (10) !store complex shift ze
-	
-            ze2=ze
-	    
-        case (11) !solve Az*qz=zwork, put qz in zwork
-            
-            Az=ze2*eye-A
-
-            call zgetrf(n,n,Az,n,ipiv,infolap)
-            if(infolap .ne. 0) print *,'ZGETRF error:',infolap
-
-            call zgetrs('N',n,m0,A,n,ipiv,zwork,n,infolap)
-            if (infolap .ne. 0) print *,'ZGETRS error:',infolap
-        
-        case (21) !same as 11, with ze=conj(ze)
-            
-            Az=conjg(ze2)*eye-A
-
-            call zgetrf(n,n,Az,n,ipiv,infolap)
-            if(infolap .ne. 0) print *,'ZGETRF error:',infolap
-
-            call zgetrs('N',n,m0,A,n,ipiv,zwork,n,infolap)
-            if (infolap .ne. 0) print *,'ZGETRS error:',infolap
- 
-        case (30) !work=A*x
-
-            call zgemm('N','N',n,m0,n,(1.0d0,0.0d0),A,n,x,n,(0.0d0,0.0d0),work,n)
-
-        case (31) !work=A*x
-
-            call zgemm('C','N',n,m0,n,(1.0d0,0.0d0),A,n,x,n,(0.0d0,0.0d0),work,n)
-
-        case (40) !work=B*x
-
-            call zlacpy('F',n,m0,x,n,work,n)
-        
-        case (41) !work=B*x
-
-            call zlacpy('F',n,m0,x,n,work,n)
-    end select
-
-    end do
-
+    call zfeast_geev(n,A,n,fpm,epsout,loop,emid,r,m0,e,X,m,res,info)
+    !call zfeast_geevx(n,A,n,fpm,epsout,loop,emid,r,m0,e,X,m,res,info,Zne,Wne)
 
     print *,info
     open(unit=10,file="rational_function.dat")
