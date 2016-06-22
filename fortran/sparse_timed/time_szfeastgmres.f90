@@ -239,7 +239,7 @@ end if
             
             if(maxres>lineps .and. linitout<linIterations) then
                 print *,'Error: linear system solver did not converge'
-                stop
+                !stop
             end if
 
             end if   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
