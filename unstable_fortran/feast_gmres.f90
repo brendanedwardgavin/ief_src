@@ -937,3 +937,60 @@ ijob=11
 call zlacpy('F',n,m,x(1,1),n,Brhs(1,1),n)
 !stop
 end subroutine zfeast_gmrespre
+
+subroutine pre_dmult(n,m,A,X,Y,Mout) !Y=inv(P)*Y
+implicit none
+    integer :: n,m
+    complex (kind=kind(0.0d0)), dimension(n,*) :: A,X,Y,Mout
+
+    complex (kind=kind(0.0d0)), dimension(:,:),allocatable :: xta,xax,ixax,invixaxta,B
+
+    integer :: i,j,k
+
+    !!!!lapack:
+    integer :: lapack
+    integer, dimension(:),allocatable :: ipiv
+
+    allocate(xta(m,n),xax(m,m),invixaxxta(m,n),B(m,m))
+    
+    allocate(ipiv(m))
+
+    !xta=transpose(A*X)
+    call zgemm('C','C',m,n,n,(1.0d0,0.0d0),X(1,1),n,A(1,1),n,(0.0d0,0.0d0),xta,m)
+
+    !xax=I
+    xax=(0.0d0,0.0d0)
+    do i=1,m
+        xax(i,i)=(1.0d0,0.0d0)
+    end do
+
+    !xax=xta*X+I
+    call zgemm('N','N',m,n,n,(1.0d0,0.0d0),xta,m,X(1,1),n,(1.0d0,0.0d0),xax,m)
+
+    !solve (xax)invixaxxta=xta for invixaxxta
+    call zgetrf(m,m,xax,m,ipiv,info)
+
+    if (info .ne. 0) then
+        print *,'pre_dmult zgetrf error',info
+        stop
+    end if
+
+    invixaxxta=xta
+    call zgetrs('N',m,n,xax,m,ipiv,invixaxxta,m,info)
+
+    if (info .ne. 0) then
+        print *,'pre_dmult zgetrs error',info
+        stop
+    end if
+
+    !B=invixaxxta*Y
+    call zgemm('N','N',m,m,n,(1.0d0,0.0d0),invixaxxta,m,Y(1,1),n,(0.0d0,0.0d0),B,m)
+
+    !Y=Y-xb
+    Mout(1:n,1:m)=Y(1:n,1:m)
+    call zgemm('N','N',n,m,m,(-1.0d0,0.0d0),X(1,1),n,B,m,(1.0d0,0.0d0),Mout(1,1),n)
+
+
+    deallocate(xta,xax,invixaxxta,B)
+
+end subroutine

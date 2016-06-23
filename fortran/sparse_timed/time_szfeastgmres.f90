@@ -121,7 +121,9 @@ maxeig=4
 allocate(xsol(n,m0), V(n,m0*kdim), Av(n,m0*kdim), Ax(n,m0), zwork2(n,m0*kdim), linwork1(n,m0), linwork2(n,m0))
 
 allocate(Zne(fpm(2)),Wne(fpm(2)))
+
 call zfeast_contour(emin,emax,fpm(2),fpm(16),fpm(18),Zne,Wne)
+
 if(fpm(18)==0) then
     do i=1,fpm(2)
        Zne(i)=dble(Zne(i))*(1.0d0,0.0d0)+(0.0d0,1.0d-9)
@@ -155,6 +157,7 @@ ijob=-1
 oldloop=0
 cpcount=1
 do while (ijob .ne. 0)
+
 call zfeast_hrcix(ijob,n,ze,work,zwork,aq,bq,fpm,epsout,loop,emin,emax,m0,e,x,m,res,info,Zne,Wne)
 
 if (oldloop .ne. loop) then
