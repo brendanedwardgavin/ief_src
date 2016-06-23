@@ -635,3 +635,363 @@ ijob=11
 call zlacpy('F',n,m,x(1,1),n,Brhs(1,1),n)
 !stop
 end subroutine zfeast_gmres
+
+
+
+
+
+subroutine zfeast_gmrespre(ijob,stateVars,Brhs,x,V,Av,Ax,ze,n,m,maxm,eps,restarts,m0,xwork,workin,Av2,times)
+implicit none
+    include 'f90_noruntime_interface.fi'
+    
+    integer :: ijob,n,m,restarts,m0,i,j,k,l
+    integer, dimension(3)::stateVars
+    
+
+    !ijob: RCI case to call when this routine returns
+    !n: dimension of linear sysmte
+    !m: number of right hand sides
+    !eps: target linear system accuracy; stop if this is reached
+    !restarts: number of GMRES loops to do
+    !m0: number of krylov subspace blocks; total krylov subspace size is m*m0
+    !i,j,k: loop variables
+    !stateVars(1) = current state of routine
+    !stateVars(2) = index for outer loop
+    !stateVars(3) = index for inner loop, for building krylov subspace
+
+    complex (kind=kind(0.0d0)), dimension(n,*):: xwork,workin !workspace variables
+    complex (kind=kind(0.0d0)), dimension(n,*) :: x,V,Ax,Av,Brhs,Av2
+    !x: solution to linear system
+    !V: Krylov subspace in which to solve linear system; has dimension m*m0
+    !Ax: A*x
+    !Av: A*V; storing this means we only have to do one matrix multiply instead of two
+    !Brhs: right hand sides
+    complex (kind=kind(0.0d0)) :: ze !complex shift for FEAST
+
+    !!lapack stuff:
+    complex (kind=kind(0.0d0)), dimension(:), pointer :: work,qrtau
+    integer :: lwork,info
+    integer, dimension(:),pointer :: ipiv
+
+    !!least squares stuff:
+    complex (kind=kind(0.0d0)), dimension(:,:), pointer :: Rs,Bs
+
+    !!check residual:
+    double precision :: norm 
+
+    !lapack least squares
+    complex (kind=kind(0.0d0)), dimension(:,:), allocatable :: B2
+    complex (kind=kind(0.0d0)), dimension(:), allocatable :: qwork
+    integer :: lwork2
+    
+    !BLAS:
+    complex (kind=kind(0.0d0)),external :: zdotc
+    double precision, external :: dznrm2
+
+    !timing:
+    double precision :: times
+    integer :: c1,c2
+    double precision, external :: elapsed_time
+  
+    !measuring norm:
+    integer :: maxm !how many linear systems to look at in determining eps
+    double precision :: eps
+    double precision :: maxres,tempres
+    double precision, dimension(1:m) :: tempreslist    
+ 
+    integer :: debug
+
+    debug=0
+
+    lwork2=n*m*m0+n*m*m0
+    allocate(qwork(lwork2),B2(n,m))
+    
+    i=stateVars(2)
+    j=stateVars(3)
+    
+    !initialize routine when we start it
+    if (stateVars(1)==-1) then
+        times=0.0d0
+        V(1:n,1:m*m0)=0.0d0
+        Av(1:n,1:m*m0)=0.0d0    
+        Ax(1:n,1:m)=0.0d0
+        x(1:n,1:m)=0.0d0
+        stateVars(2)=1
+        stateVars(3)=1
+        stateVars(1)=1
+        xwork(1:n,1:m)=0.0d0
+    end if
+    
+
+    if (stateVars(1)==3) then !B*V(j) for building V
+        call zscal(n*m,ze,workin(1,1),1)
+        call zlacpy('F',n,m,workin(1,1),n,V(1,m*j+1),n) 
+        !V(1:n,m*j+1:m*(j+1))=workin(1:n,1:m)*(1.0d0,0.0d0)*ze
+        !xwork(1:n,1:m)=dimag(V(1:n,m*(j-1)+1:m*j)) !if we have B matrix
+
+        call zlacpy('F',n,m,V(1,m*(j-1)+1),n,xwork(1,1),n)
+        !xwork(1:n,1:m)=V(1:n,m*(j-1)+1:m*j) !if we don't have B matrix
+        stateVars(1)=33
+        ijob=30
+        return
+    end if
+
+    if (stateVars(1)==33) then !A*re(V(j)) for V
+        call zaxpy(n*m,(-1.0d0,0.0d0),workin(1:n,1:m),1,V(1:n,m*j+1:m*(j+1)),1)
+        !V(1:n,m*j+1:m*(j+1))=V(1:n,m*j+1:m*(j+1))-workin(1:n,1:m)*(1.0d0,0.0d0)
+    end if
+
+
+    if (stateVars(1)==4) then !B*re(V(j)) for Av
+        call zscal(n*m,ze,workin(1,1),1)
+        call zlacpy('F',n,m,workin(1,1),n,Av(1,m*(m0-1)+1),n)
+
+        !V(1:n,m*j+1:m*(j+1))=Av2(1:n,1:m)        
+        !Av(1:n,m*(m0-1)+1:m*m0)=Av2(1:n,1:m)
+                !Av(1:n,m*(m0-1)+1:m*m0)=workin(1:n,1:m)*(1.0d0,0.0d0)*ze
+        !xwork(1:n,1:m)=dimag(V(1:n,m*(m0-1)+1:m*m0)) !if we have B matrix
+        
+        !xwork(1:n,1:m)=V(1:n,m*(m0-1)+1:m*m0) !if we don't have B matrix
+        call zlacpy('F',n,m,V(1,m*(m0-1)+1),n,xwork(1,1),n)
+        stateVars(1)=43
+        ijob=30
+        return
+    end if
+
+    if (stateVars(1)==43) then !A*re(V(j)) for Av
+        call zaxpy(n*m,(-1.0d0,0.0d0),workin(1:n,1:m),1,Av(1:n,m*(m0-1)+1:m*m0),1)
+        !Av(1:n,m*(m0-1)+1:m*m0)=Av(1:n,m*(m0-1)+1:m*m0)-workin(1:n,1:m)*(1.0d0,0.0d0)
+    end if
+
+    do i=stateVars(2),restarts
+        stateVars(2)=i
+        
+        !form right hand side from residual:
+        if (stateVars(1)==1) then 
+            
+            if(debug) print*,'finding residual'
+            V(1:n,1:m)=Brhs(1:n,1:m)-Ax(1:n,1:m)
+            !print *,'resnorm1=',dznrm2(n*m, V(1:n,1:m), 1)
+
+            !calculate individual vector residuals in order to see if we've converged:
+            maxres=0.0d0
+            !maxm=m
+            do k=1,m
+               tempreslist(k)=dznrm2(n,v(1:n,k),1)/dznrm2(n,Brhs(1:n,k),1)
+            end do
+
+            call quicksort(tempreslist,1,m)
+            
+            maxres=tempreslist(maxm)
+
+            if(maxres<eps) then
+                !print *,'     lin sys converged:',maxres,eps
+                !print *,'     ',i,restarts
+                exit
+            end if
+
+            !call zlacpy('F',n,m,Brhs(1,1),n,V(1,1),n)
+            !call zaxpy(n*m,(-1.0d0,0.0d0),Ax(1,1),1,V(1,1),1)
+        end if        
+
+        
+        !__________form Krylov subspace V_____________________
+        
+        do j=stateVars(3),m0-1
+
+            if(debug) print*,'doing krylov',j
+            
+            stateVars(3)=j
+            if (stateVars(1)==1 .or. stateVars(1)==4) then
+                !xwork(1:n,1:m)=dble(V(1:n,m*(j-1)+1:m*j)) !do this when we have a B matrix
+                call zlacpy('F',n,m,V(1,m*(j-1)+1),n,xwork(1,1),n)
+
+                !workin(1:n,1:m)=V(1:n,m*(j-1)+1:m*j) !do this when we don't have B matrix
+                !call zlacpy('F',n,m,V(1,m*(j-1)+1),n,workin(1,1),n)
+                
+                stateVars(1)=3     
+                ijob=40       
+                return
+            end if
+
+            if(stateVars(1)==33) then
+                stateVars(1)=4
+            end if
+        end do
+
+        if (m0==1) then
+            if (stateVars(1)==1) then
+                if(debug) print*,'setting state to 4'
+                stateVars(1)=4
+            end if
+        end if
+
+        !____________form reduced system Av=A*V_______________
+
+        if (stateVars(1)==4) then
+            if (m0>1) then
+                !call zlacpy('F',n,m*(m0-1),V(1,m+1),n,Av(1,1),n)
+                Av(1:n,1:m*(m0-1))=V(1:n,m+1:m0*m)
+            end if
+            if(debug) print*,'forming reduced system, beginning multiply'
+            
+            !xwork(1:n,1:m)=dble(V(1:n,m*(m0-1)+1:m*m0)) !if we have B matrix
+            call zlacpy('F',n,m,V(1,m*(m0-1)+1),n,xwork(1,1),n)
+            
+            !workin(1:n,1:m)=V(1:n,m*(m0-1)+1:m*m0) ! if we don't have B matrix
+            !call zlacpy('F',n,m,V(1,m*(m0-1)+1),n,workin(1,1),n)
+            
+            ijob=40
+            return
+        end if
+
+        if (stateVars(1)==43) then
+
+            if(debug) print*,'solving reduced system'
+            !____________Solve reduced system Av*x=r______________
+
+            call system_clock(count=c1) 
+            call wallocate_1i(ipiv,m*m0,info)
+            lwork=3*n
+            call wallocate_1z(work,lwork,info)
+            call wallocate_1z(qrtau,m0*m,info)
+
+            call wallocate_2z(Rs,m0*m,m0*m,info)
+            call wallocate_2z(Bs,m0*m,m,info)
+           
+            !Av2(1:n,1:m0*m)=Av(1:n,1:m0*m) 
+            call zlacpy('F',n,m*m0,Av(1,1),n,Av2(1,1),n)
+
+            !goto 111
+            !get QR factorization
+            call ZGEQRF( n, m0*m, Av2, n, qrtau, work, lwork, info )
+            if (info .ne. 0) then
+                print *,'Problem with least squares solution in GMRES'
+                print *,'ZGEQRF error info = ',info
+                stop
+            end if
+    
+            !get R matrix
+            !Rs(1:m*m0,1:m*m0)=Av2(1:m*m0,1:m*m0)
+            call zlacpy('F',m*m0,m*m0,Av2(1,1),n,Rs(1,1),m*m0) 
+
+            !get Q matrix
+            call ZUNGQR(  n, m0*m, m0*m, Av2, n, qrtau, work, lwork, info )
+            if (info .ne. 0) then
+                print *,'Problem with least squares solution in GMRES'
+                print *,'ZUNGQR error info = ',info
+                stop
+            end if
+            
+            !form reduced right hand side matrix:
+            !use V(1:n,1:m) since V(1:n,1:m) = r = B-Ax is the right hand side
+            call ZGEMM('C','N',m*m0,m,n,(1.0d0,0.0d0),Av2,n,V(1:n,1:m),n,(0.0d0,0.0d0),Bs(1,1),m0*m)
+         
+            !solve upper triangular system Rs*x=Q'*Bs
+            call ZTRTRS( 'U', 'N', 'N', m*m0, m, Rs, m*m0, Bs, m0*m, info )
+            if (info .ne. 0) then
+                print *,'Problem with least squares solution in GMRES'
+                print *,'ZTRTRS error info = ',info
+                stop
+            end if
+            111 continue
+
+            !B2(1:n,1:m)=V(1:n,1:m)
+            !call ZGELS('N',n,m*m0,m,Av2(1:n,1:m*m0),n,B2(1:n,1:m),n,qwork,lwork2,info)
+            !if (info .ne. 0) then
+            !    print *,'Problem with least squares solution in GMRES'
+            !    print *,'ZGELS error info = ',info
+            !    stop
+            !end if 
+            !Bs(1:m*m0,1:m)=B2(1:m*m0,1:m)
+
+            !update Ax
+            call ZGEMM('N','N',n,m,m*m0,(1.0d0,0.0d0),Av(1,1),n,Bs(1,1),m0*m,(1.0d0,0.0d0),Ax(1,1),n)
+            
+            !get full size solution x=V*xr
+            call ZGEMM('N','N',n,m,m*m0,(1.0d0,0.0d0),V(1,1),n,Bs(1,1),m0*m,(0.0d0,0.0d0),Av(1,1),n) 
+            
+            !update solution:
+            x(1:n,1:m)=x(1:n,1:m)+Av(1:n,1:m) !reusing Av to save some memory
+
+            call wdeallocate_1i(ipiv)
+            call wdeallocate_1z(work)
+            call wdeallocate_1z(qrtau)
+
+            call wdeallocate_2z(Rs)
+            call wdeallocate_2z(Bs) 
+            call system_clock(count=c2)
+            times=times+elapsed_time(c1,c2)            
+
+            if  (i<restarts) then
+                !xwork(1:n,1:m)=dble(x(1:n,1:m)) !if we have B matrix
+                !workin(1:n,1:m)=V(1:n,m*(m0-1)+1:m*m0) !if we don't have B matrix
+                !call zlacpy('F',n,m,V(1,m*(m0-1)+1),n,workin(1,1),n)
+                stateVars(1)=1
+            end if
+        end if
+    end do
+
+stateVars(1)=0!-2
+ijob=11
+!Brhs(1:n,1:m)=x(1:n,1:m)
+call zlacpy('F',n,m,x(1,1),n,Brhs(1,1),n)
+!stop
+end subroutine zfeast_gmrespre
+
+subroutine pre_dmult(n,m,A,X,Y,Mout) !Y=inv(P)*Y
+implicit none
+    integer :: n,m
+    complex (kind=kind(0.0d0)), dimension(n,*) :: A,X,Y,Mout
+
+    complex (kind=kind(0.0d0)), dimension(:,:),allocatable :: xta,xax,ixax,invixaxta,B
+
+    integer :: i,j,k
+
+    !!!!lapack:
+    integer :: lapack
+    integer, dimension(:),allocatable :: ipiv
+
+    allocate(xta(m,n),xax(m,m),invixaxxta(m,n),B(m,m))
+    
+    allocate(ipiv(m))
+
+    !xta=transpose(A*X)
+    call zgemm('C','C',m,n,n,(1.0d0,0.0d0),X(1,1),n,A(1,1),n,(0.0d0,0.0d0),xta,m)
+
+    !xax=I
+    xax=(0.0d0,0.0d0)
+    do i=1,m
+        xax(i,i)=(1.0d0,0.0d0)
+    end do
+
+    !xax=xta*X+I
+    call zgemm('N','N',m,n,n,(1.0d0,0.0d0),xta,m,X(1,1),n,(1.0d0,0.0d0),xax,m)
+
+    !solve (xax)invixaxxta=xta for invixaxxta
+    call zgetrf(m,m,xax,m,ipiv,info)
+
+    if (info .ne. 0) then
+        print *,'pre_dmult zgetrf error',info
+        stop
+    end if
+
+    invixaxxta=xta
+    call zgetrs('N',m,n,xax,m,ipiv,invixaxxta,m,info)
+
+    if (info .ne. 0) then
+        print *,'pre_dmult zgetrs error',info
+        stop
+    end if
+
+    !B=invixaxxta*Y
+    call zgemm('N','N',m,m,n,(1.0d0,0.0d0),invixaxxta,m,Y(1,1),n,(0.0d0,0.0d0),B,m)
+
+    !Y=Y-xb
+    Mout(1:n,1:m)=Y(1:n,1:m)
+    call zgemm('N','N',n,m,m,(-1.0d0,0.0d0),X(1,1),n,B,m,(1.0d0,0.0d0),Mout(1,1),n)
+
+
+    deallocate(xta,xax,invixaxxta,B)
+
+end subroutine
