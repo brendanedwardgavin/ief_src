@@ -1,3 +1,89 @@
+
+
+double precision function elapsed_time(c1,c2)
+integer :: c1,c2
+integer :: diff
+integer :: maxcount,countrate
+
+call system_clock(count_rate=countrate,count_max=maxcount)
+
+if(c2<c1) then
+    diff=maxcount+c2-c1
+else
+    diff=c2-c1
+end if
+
+elapsed_time= dble(diff)/dble(countrate)
+
+end function elapsed_time
+
+
+subroutine zprintMat(Mat,n,rowmax,colmax)
+integer :: n,colmax,rowmax,j,k
+complex (kind=kind(0.0d0)), dimension(n,*) :: Mat
+character (len=12) :: fmtstr
+
+write(fmtstr,'(i0)') colmax
+print *,''
+do j=1,rowmax
+!write(*,"(15g15.5)") (real(V(j,k)*conjg(V(j,k))), k=1,m*m0)
+!write(*,'('//fmtstr//'g15.5)') (real(Mat(j,k)*conjg(Mat(j,k))), k=1,colmax) !(real(Mat(j,k)*conjg(Mat(j,k))), k=1,rowmax) 
+write(*,'('//fmtstr//'g15.5)') (abs(Mat(j,k)), k=1,colmax)
+end do
+print *,''
+end subroutine zprintMat
+
+
+subroutine selection_sort(list,n) !sort list to be smallest to biggest; not good for really big lists
+    double precision, dimension(:) :: list
+    integer :: n
+
+    integer :: i,j
+    double precision :: temp
+
+    do i=1,n-1
+
+        do j=i+1,n
+            if(list(j)<list(i)) then
+                temp=list(i)
+                list(i)=list(j)
+                list(j)=temp
+            end if
+        end do
+
+    end do
+
+end subroutine selection_sort
+
+
+recursive subroutine quicksort(list,lo,hi)
+    double precision, dimension(*), intent(inout) :: list
+    integer, intent(in) :: lo,hi
+
+    integer :: i,j
+    double precision :: pivot,temp
+
+    if(lo<hi) then
+    
+    pivot=list(hi)
+    
+    i=lo
+    do j=lo,hi-1
+        if (list(j)<=pivot) then
+            temp=list(i)
+            list(i)=list(j)
+            list(j)=temp
+            i=i+1
+        end if
+    end do
+    temp=list(i)
+    list(i)=list(hi)
+    list(hi)=temp
+    end if
+end subroutine quicksort
+
+
+
 subroutine dfeast_gmres(ijob,stateVars,Brhs,x,V,Av,Ax,ze,n,m,restarts,m0,xwork,workin,Av2)
 implicit none
     include 'f90_noruntime_interface.fi'
@@ -256,92 +342,6 @@ ijob=11
 call zlacpy('F',n,m,x(1,1),n,Brhs(1,1),n)
 
 end subroutine dfeast_gmres
-
-
-
-double precision function elapsed_time(c1,c2)
-integer :: c1,c2
-integer :: diff
-integer :: maxcount,countrate
-
-call system_clock(count_rate=countrate,count_max=maxcount)
-
-if(c2<c1) then
-    diff=maxcount+c2-c1
-else
-    diff=c2-c1
-end if
-
-elapsed_time= dble(diff)/dble(countrate)
-
-end function elapsed_time
-
-
-subroutine zprintMat(Mat,n,rowmax,colmax)
-integer :: n,colmax,rowmax,j,k
-complex (kind=kind(0.0d0)), dimension(n,*) :: Mat
-character (len=12) :: fmtstr
-
-write(fmtstr,'(i0)') colmax
-print *,''
-do j=1,rowmax
-!write(*,"(15g15.5)") (real(V(j,k)*conjg(V(j,k))), k=1,m*m0)
-!write(*,'('//fmtstr//'g15.5)') (real(Mat(j,k)*conjg(Mat(j,k))), k=1,colmax) !(real(Mat(j,k)*conjg(Mat(j,k))), k=1,rowmax) 
-write(*,'('//fmtstr//'g15.5)') (abs(Mat(j,k)), k=1,colmax)
-end do
-print *,''
-end subroutine zprintMat
-
-
-subroutine selection_sort(list,n) !sort list to be smallest to biggest; not good for really big lists
-    double precision, dimension(:) :: list
-    integer :: n
-
-    integer :: i,j
-    double precision :: temp
-
-    do i=1,n-1
-
-        do j=i+1,n
-            if(list(j)<list(i)) then
-                temp=list(i)
-                list(i)=list(j)
-                list(j)=temp
-            end if
-        end do
-
-    end do
-
-end subroutine selection_sort
-
-
-recursive subroutine quicksort(list,lo,hi)
-    double precision, dimension(*), intent(inout) :: list
-    integer, intent(in) :: lo,hi
-
-    integer :: i,j
-    double precision :: pivot,temp
-
-    if(lo<hi) then
-    
-    pivot=list(hi)
-    
-    i=lo
-    do j=lo,hi-1
-        if (list(j)<=pivot) then
-            temp=list(i)
-            list(i)=list(j)
-            list(j)=temp
-            i=i+1
-        end if
-    end do
-    temp=list(i)
-    list(i)=list(hi)
-    list(hi)=temp
-    end if
-end subroutine quicksort
-
-
 
 subroutine zfeast_gmres(ijob,stateVars,Brhs,x,V,Av,Ax,ze,n,m,maxm,eps,restarts,m0,xwork,workin,Av2,times)
 implicit none
@@ -939,36 +939,45 @@ call zlacpy('F',n,m,x(1,1),n,Brhs(1,1),n)
 !stop
 end subroutine zfeast_gmrespre
 
-subroutine pre_dmult(n,m,A,X,Y,Mout) !Y=inv(P)*Y
-implicit none
-    integer :: n,m
-    complex (kind=kind(0.0d0)), dimension(n,*) :: A,X,Y,Mout
 
-    complex (kind=kind(0.0d0)), dimension(:,:),allocatable :: xta,xax,ixax,invixaxta,B
+subroutine pre_dmult1(n,m,A,X,Y,Mout,ze)
+    implicit none
+    integer :: n,m
+    complex (kind=kind(0.0d0)) :: ze
+    complex (kind=kind(0.0d0)), dimension(n,n), intent(in) :: A
+    complex (kind=kind(0.0d0)), dimension(n,m), intent(in) :: X,Y
+    complex (kind=kind(0.0d0)), dimension(n,m), intent(out) ::Mout
+
+    complex (kind=kind(0.0d0)), dimension(:,:),allocatable :: xta1,xta,xax,ixax,invixaxxta,B
 
     integer :: i,j,k
 
     !!!!lapack:
-    integer :: lapack
+    integer :: info
     integer, dimension(:),allocatable :: ipiv
 
-    allocate(xta(m,n),xax(m,m),invixaxxta(m,n),B(m,m))
-    
+    integer :: debug
+
+    debug=1
+
+    allocate(xta1(n,m),xta(m,n),xax(m,m),invixaxxta(m,n),B(m,m))
+
     allocate(ipiv(m))
 
-    !xta=transpose(A*X)
-    call zgemm('C','C',m,n,n,(1.0d0,0.0d0),X(1,1),n,A(1,1),n,(0.0d0,0.0d0),xta,m)
+    call zgemm('N','N',n,m,n,(1.0d0,0.0d0),A,n,X,n,(0.0d0,0.0d0),xta1,n)
+    xta=conjg(transpose(xta1))
 
-    !xax=I
     xax=(0.0d0,0.0d0)
     do i=1,m
         xax(i,i)=(1.0d0,0.0d0)
     end do
 
-    !xax=xta*X+I
-    call zgemm('N','N',m,n,n,(1.0d0,0.0d0),xta,m,X(1,1),n,(1.0d0,0.0d0),xax,m)
+    call zgemm('N','N',m,m,n,(1.0d0,0.0d0),xta,m,X,n,(1.0d0,0.0d0),xax,m)
+    !xax=matmul(xta,X)
+    !do i=1,m
+    !    xax(i,i)=xax(i,i)+(1.0d0,0.0d0)
+    !end do
 
-    !solve (xax)invixaxxta=xta for invixaxxta
     call zgetrf(m,m,xax,m,ipiv,info)
 
     if (info .ne. 0) then
@@ -984,14 +993,81 @@ implicit none
         stop
     end if
 
-    !B=invixaxxta*Y
-    call zgemm('N','N',m,m,n,(1.0d0,0.0d0),invixaxxta,m,Y(1,1),n,(0.0d0,0.0d0),B,m)
+    call zgemm('N','N',m,m,n,(1.0d0,0.0d0),invixaxxta,m,Y,n,(0.0d0,0.0d0),B,m) 
 
-    !Y=Y-xb
-    Mout(1:n,1:m)=Y(1:n,1:m)
-    call zgemm('N','N',n,m,m,(-1.0d0,0.0d0),X(1,1),n,B,m,(1.0d0,0.0d0),Mout(1,1),n)
+    Mout=Y
+
+    call zgemm('N','N',n,m,m,(-1.0d0,0.0d0),X,n,B,m,(1.0d0,0.0d0),Mout,n)
+
+end subroutine pre_dmult1
 
 
-    deallocate(xta,xax,invixaxxta,B)
 
-end subroutine
+
+subroutine pre_dmult(n,m,A,X,Y,Mout,ze)
+    implicit none
+    integer :: n,m
+    complex (kind=kind(0.0d0))::ze
+    complex (kind=kind(0.0d0)), dimension(n,n), intent(in) :: A
+    complex (kind=kind(0.0d0)), dimension(n,m), intent(in) :: X,Y
+    complex (kind=kind(0.0d0)), dimension(n,m), intent(out) ::Mout
+
+    complex (kind=kind(0.0d0)), dimension(:,:),allocatable :: xta1,xta,xax,ixax,invixaxxta,B
+
+    integer :: i,j,k
+
+    !!!!lapack:
+    integer :: info
+    integer, dimension(:),allocatable :: ipiv
+
+    integer :: debug
+
+    debug=1
+
+    allocate(xta1(n,m),xta(m,n),xax(m,m),invixaxxta(m,n),B(m,m))
+
+    allocate(ipiv(m))
+
+    !xta=transpose(A*X)
+    call zgemm('N','N',n,m,n,(1.0d0,0.0d0),A,n,X,n,(0.0d0,0.0d0),xta1,n)
+    xta=conjg(transpose(xta1))
+
+    !xax=I-transpose(A*X)*X/ze
+    xax=(0.0d0,0.0d0)
+    do i=1,m
+        xax(i,i)=(1.0d0,0.0d0)
+    end do
+
+    call zgemm('N','N',m,m,n,(-1.0d0,0.0d0)/ze,xta,m,X,n,(1.0d0,0.0d0),xax,m)
+    !xax=matmul(xta,X)
+    !do i=1,m
+    !    xax(i,i)=xax(i,i)+(1.0d0,0.0d0)
+    !end do
+
+    !invixaxxta=inv(I-X'A'X/ze)*X'A'
+    call zgetrf(m,m,xax,m,ipiv,info)
+
+    if (info .ne. 0) then
+        print *,'pre_dmult zgetrf error',info
+        stop
+    end if
+
+    invixaxxta=xta
+    call zgetrs('N',m,n,xax,m,ipiv,invixaxxta,m,info)
+
+    if (info .ne. 0) then
+        print *,'pre_dmult zgetrs error',info
+        stop
+    end if
+
+    !B=inv(I-X'A'X/ze)*X'A'Y/ze^2    
+    call zgemm('N','N',m,m,n,(1.0d0,0.0d0),invixaxxta,m,Y,n,(0.0d0,0.0d0),B,m) 
+    B=B/ze**2
+
+    Mout=Y/ze
+
+    call zgemm('N','N',n,m,m,(1.0d0,0.0d0),X,n,B,m,(1.0d0,0.0d0),Mout,n)
+
+    !Mout=Y
+
+end subroutine pre_dmult
