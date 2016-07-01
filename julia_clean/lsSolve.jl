@@ -219,7 +219,7 @@ function improveSolveIn(A::Array{Complex128,2},B::Array{Complex128,2},x0::Array{
 	return X
 end
 
-function lsSolve(A::Array{Complex128,2},B::Array{Complex128,2},m0)
+function lsSolve(A,B,m0)
 
 	
 	(n,m)=size(B)
