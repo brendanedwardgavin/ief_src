@@ -403,7 +403,7 @@ do i=0,loop
     write (11,"(I3)",advance="no") i
     write (11,"("//m0str//"F8.2)") (linsysitcp(j,i), j=1,fpm(2) )
     write (12,"(I3)",advance="no") i
-    write (12,"("//cpstr//"F8.2)") (linsysrescp(j,i), j=1,fpm(2) )
+    write (12,"("//cpstr//"ES15.5)") (linsysrescp(j,i), j=1,fpm(2) )
     write(10,*) i,timelist(i),reslist(i),linsysreslist(i)
 end do
 close(10)
