@@ -1,0 +1,3 @@
+flags=-fpp -mkl -traceback -DMPI #-check all
+all:		
+	mpiifort ../feast_gmres.f90 time_szfeastgmres.f90 time_sddriver.f90 ../../myFeast3.0/lib/x64/libpfeast.a ../../myFeast3.0/lib/x64/libpfeast_sparse.a $(flags) -o ../../bin/time_sddriverpar	
