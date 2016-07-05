@@ -8,6 +8,8 @@ double precision :: repart,impart
 
 integer :: pc
 character(len=100) :: name
+character(len=100) :: outname
+
 character(len=1) UPLO,PRE,SHG,EG
 character(len=1) :: cc
 complex (kind=kind(0.0d0)),dimension(:),allocatable :: dsa,dca,ssa
@@ -25,6 +27,11 @@ double precision :: emin,emax
 
 call feastinit(fpm)
 call getarg(1,name)
+if (iargc()==2) then
+    call getarg(2,outname)
+else
+    outname=""
+end if
 
 !!!!!!!!!!!! DRIVER_FEAST_SPARSE input file  
   open(10,file=trim(name)//'.in',status='old')
@@ -88,7 +95,7 @@ call getarg(1,name)
 !print *,'dsa:',dsa
 ! stop
 
-  call time_dzfeastgmres(UPLO,n,A,fpm,emin,emax,m0) 
+  call time_dzfeastgmres(UPLO,n,A,fpm,emin,emax,m0,outname) 
 
 end program
 

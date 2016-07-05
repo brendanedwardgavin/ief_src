@@ -264,6 +264,7 @@ end if
             cpcount=cpcount+1
             
         case(21)
+            if(meas_acc) zt1=zwork
 
             if(epsout>0.0d0) then
                 lineps=epsout*linepsmult
@@ -274,7 +275,7 @@ end if
             linState(1)=-1 !set linsate(1)=-1 to begin RCI routine dfeast_gmres
             call system_clock(count=linc1)
             do while (linState(1) .ne. 0)
-                if(meas_acc) zt1=zwork
+
                 !call system_clock(count=c1)
                 call zfeast_gmres(linjob,linState,zwork,xsol,V,Av,Ax,conjg(ze2),n,m0,maxeig,lineps,linIterations,kdim,linwork1,linwork2,zwork2,times_gm)
                 !call system_clock(count=c2)
@@ -404,7 +405,7 @@ do i=0,loop
     write (11,"("//m0str//"F8.2)") (linsysitcp(j,i), j=1,fpm(2) )
     write (12,"(I3)",advance="no") i
     write (12,"("//cpstr//"ES15.5)") (linsysrescp(j,i), j=1,fpm(2) )
-    write(10,*) i,timelist(i),reslist(i),linsysreslist(i)
+    !write(10,*) i,timelist(i),reslist(i),linsysreslist(i)
 end do
 close(10)
 close(11)

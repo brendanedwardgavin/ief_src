@@ -1,7 +1,8 @@
-subroutine time_dzfeastgmres(UPLO,n,A,fpm,emin,emax,m0)
+subroutine time_dzfeastgmres(UPLO,n,A,fpm,emin,emax,m0,outname)
 
 implicit none
 
+character(len=100) :: outname
 integer :: i,j,k
 double precision :: dtmp1,dtmp2
 character(len=1) UPLO
@@ -60,7 +61,7 @@ double precision, dimension(:),allocatable :: reslist,timelist,linsysreslist
 double precision, dimension(:,:),allocatable :: rhsreslistavg
 double precision, dimension(:,:,:),allocatable :: rhsreslistcp
 double precision, dimension(:),allocatable :: linsysitavg
-double precision, dimension(:,:),allocatable :: linsysitcp
+double precision, dimension(:,:),allocatable :: linsysitcp,linsysrescp
 integer :: oldloop,cpcount,linitout
 
 !!!!!!!!!!!!!!!!!!!!!!! debug/lin sys accuracy
@@ -100,13 +101,14 @@ allocate(zwork(n,m0))
 
 allocate(reslist(0:fpm(4)),timelist(0:fpm(4)),linsysreslist(0:fpm(4)),rhsreslistavg(0:fpm(4),1:m0),rhsreslistcp(1:fpm(2),0:fpm(4),1:m0))
 allocate(tempreslist(1:m0))
-allocate(linsysitavg(0:fpm(4)),linsysitcp(1:fpm(2),0:fpm(4)))
+allocate(linsysitavg(0:fpm(4)),linsysitcp(1:fpm(2),0:fpm(4)),linsysrescp(1:fpm(2),0:fpm(4)))
 allocate(cplist(1:fpm(2)))
 linsysreslist=0.0d0
 rhsreslistavg=0.0d0
 rhsreslistcp=0.0d0
 linsysitavg=0.0d0
 linsysitcp=0.0d0
+linsysrescp=0.0d0
 !!!!!!!!!!!!!  Set up linear system solver:
 matdescra(1)='H'
 matdescra(2)='L'
@@ -236,7 +238,7 @@ end if
             !print *,"    tol= ",lineps
             !print *,"    loops=",linitout
             linsysreslist(loop)=linsysreslist(loop)+maxres/dble(fpm(2))
-            
+            linsysrescp(cpcount,loop)=maxres 
             if(maxres>lineps .and. linitout<linIterations) then
                 print *,'Error: linear system solver did not converge'
                 !stop
@@ -363,14 +365,14 @@ print *,'Solve time: '!,time_linsys,time_linsys/time_total
 print *,'      Time:',times_breakdown_feast(3)
 print *,'      Percent:',100*times_breakdown_feast(3)/time_total
 !write residual iterations and times to output file
-open(unit=10,file='../output/residualsout.dat',status='REPLACE')
+open(unit=10,file='../output/'//trim(outname)//'residualsout.dat',status='REPLACE')
 do i=0,loop
     write (10,"(I3, 3ES15.5, F8.2)") i,timelist(i),reslist(i),linsysreslist(i),linsysitavg(i)
     !write(10,*) i,timelist(i),reslist(i),linsysreslist(i)
 end do
 close(10)
 
-open(unit=10,file='../output/final_vals.dat',status='REPLACE')
+open(unit=10,file='../output/'//trim(outname)//'final_vals.dat',status='REPLACE')
     write (10,*) loop
     write (10,*) timelist(loop)
     write (10,*) reslist(loop)
@@ -379,20 +381,24 @@ open(unit=10,file='../output/final_vals.dat',status='REPLACE')
 close(10)
 
 write(m0str,"(I5)") m0
-open(unit=10,file='../output/rhsresidualsout.dat',status='REPLACE')
-open(unit=11,file='../output/linitsout.dat',status='REPLACE')
+open(unit=10,file='../output/'//trim(outname)//'rhsresidualsout.dat',status='REPLACE')
+open(unit=11,file='../output/'//trim(outname)//'linitsout.dat',status='REPLACE')
+open(unit=12,file='../output/'//trim(outname)//'linrescpout.dat',status='REPLACE')
 do i=0,loop
     write (10,"(I3)",advance="no") i
     write (10,"("//m0str//"ES15.5)") (rhsreslistavg(i,j), j=1,m0 )
 
     write (11,"(I3)",advance="no") i
     write (11,"("//m0str//"F8.2)") (linsysitcp(j,i), j=1,fpm(2) )
+    write (12,"(I3)",advance="no") i
+    write (12,"("//cpstr//"ES15.5)") (linsysrescp(j,i), j=1,fpm(2) )
     !write(10,*) i,timelist(i),reslist(i),linsysreslist(i)
 end do
 close(10)
 close(11)
+close(12)
 
-open(unit=10,file='../output/contourpoints.dat',status='REPLACE')
+open(unit=10,file='../output/'//trim(outname)//'contourpoints.dat',status='REPLACE')
 do i=1,fpm(2)
     write(10,*) i,cplist(i)
 end do
