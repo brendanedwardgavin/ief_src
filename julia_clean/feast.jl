@@ -280,10 +280,9 @@ function feast(A,x0,nc,lmin,lmax,m0,eps,maxit)
 
 		F=eigfact(Bq)
 		best=F[:values]
-		#println(best)
 		mactual=0
 		for i in 1:m0
-			if best[i]>= 0.5 && lest[i] >= lmin && lest[i] <=lmax
+			if best[i]>= 0.0 && lest[i] >= lmin && lest[i] <=lmax
 				mactual=mactual+1
 			end
 		end
@@ -295,13 +294,8 @@ function feast(A,x0,nc,lmin,lmax,m0,eps,maxit)
 		end
 		#(res,ind)=findmax(reslist)
 		reslistsort=sort(reslist)
-		
-		if mactual>0
-			res=reslistsort[mactual]		
-		else
-			res=reslistsort[m0]
-		end			
-
+		res=reslistsort[mactual]		
+			
 		println("FEAST Iteration $it: res = $res,  m=$mactual")
 		#println("    Lin sys res=$(linres[it]), its=$(linits[it])")
 		
