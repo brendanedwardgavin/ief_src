@@ -1,0 +1,11 @@
+        !COMPILER-GENERATED INTERFACE MODULE: Thu Jul 28 16:03:25 2016
+        MODULE ZPRINTMAT__genmod
+          INTERFACE 
+            SUBROUTINE ZPRINTMAT(MAT,N,ROWMAX,COLMAX)
+              INTEGER(KIND=4) :: N
+              COMPLEX(KIND=8) :: MAT(N,*)
+              INTEGER(KIND=4) :: ROWMAX
+              INTEGER(KIND=4) :: COLMAX
+            END SUBROUTINE ZPRINTMAT
+          END INTERFACE 
+        END MODULE ZPRINTMAT__genmod

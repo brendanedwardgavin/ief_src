@@ -374,6 +374,14 @@ print *,''
 print *,'Solve time: '!,time_linsys,time_linsys/time_total
 print *,'      Time:',times_breakdown_feast(3)
 print *,'      Percent:',100*times_breakdown_feast(3)/time_total
+
+print *,''
+print *,'Residuals:'
+do i=1,m0
+    print *,i,res(i)
+end do
+print *,''
+
 !write residual iterations and times to output file
 open(unit=10,file='../output/'//trim(outname)//'residualsout.dat',status='REPLACE')
 do i=0,loop

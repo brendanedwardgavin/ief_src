@@ -73,7 +73,7 @@ allocate(zwork(n,m0))
 
 call feastinit(fpm)
 fpm(1)=1 !turn on FEAST output
-fpm(4)=50 !maximum FEAST iterations
+fpm(4)=200 !maximum FEAST iterations
 fpm(2)=4 !number of FEAST contour points, i.e. number of linear systems to solve at each FEAST iteration
 fpm(3)=6 !accuracy of FEAST iterations, i.e. stop when residual is less than 10^-fpm(3)
 

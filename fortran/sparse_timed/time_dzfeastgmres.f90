@@ -78,7 +78,7 @@ integer :: meas_acc,print_times
 character(5) :: m0str,cpstr
 
 
-meas_acc=1
+meas_acc=0
 print_times=0
 
 times_gm=0.0d0
@@ -137,6 +137,8 @@ if (fpm(11)==0) then
 !call zfeast_hcsrev(UPLO,n,dsa,isa,jsa,fpm,epsout,loop,emin,emax,m0,e,x,m,res,info)
 
 !call zfeast_hcsrev_timed(UPLO,n,dsa,isa,jsa,fpm,epsout,loop,emin,emax,m0,e,x,m,res,info,reslist,timelist,times_breakdown_feast)
+
+call zfeast_heev_timed(UPLO,n,A,n,fpm,epsout,loop,emin,emax,m0,e,x,m,res,info,reslist,timelist,times_breakdown_feast)
 
 time_total=timelist(loop)
 time_mm=times_breakdown_feast(1)
@@ -381,6 +383,7 @@ open(unit=10,file='../output/'//trim(outname)//'final_vals.dat',status='REPLACE'
 close(10)
 
 write(m0str,"(I5)") m0
+write(cpstr,"(I5)") fpm(2)
 open(unit=10,file='../output/'//trim(outname)//'rhsresidualsout.dat',status='REPLACE')
 open(unit=11,file='../output/'//trim(outname)//'linitsout.dat',status='REPLACE')
 open(unit=12,file='../output/'//trim(outname)//'linrescpout.dat',status='REPLACE')
@@ -389,7 +392,7 @@ do i=0,loop
     write (10,"("//m0str//"ES15.5)") (rhsreslistavg(i,j), j=1,m0 )
 
     write (11,"(I3)",advance="no") i
-    write (11,"("//m0str//"F8.2)") (linsysitcp(j,i), j=1,fpm(2) )
+    write (11,"("//cpstr//"F8.2)") (linsysitcp(j,i), j=1,fpm(2) )
     write (12,"(I3)",advance="no") i
     write (12,"("//cpstr//"ES15.5)") (linsysrescp(j,i), j=1,fpm(2) )
     !write(10,*) i,timelist(i),reslist(i),linsysreslist(i)
@@ -426,5 +429,425 @@ end subroutine time_dzfeastgmres
 !elapsed_time= dble(diff)/dble(countrate)
 
 !end function elapsed_time
+
+
+
+subroutine zfeast_heev_timed(UPLO,N,A,LDA,fpm,epsout,loop,Emin,Emax,M0,E,X,mode,res,info,reslist,timelist,times_breakdown_feast)
+  !  Purpose 
+  !  =======
+  !  FEAST DENSE INTERFACE
+  !  Solve the standard Ax=ex eigenvalue problem
+  !  
+  !  A COMPLEX HERMITIAN :: DENSE FORMAT 
+  ! 
+  !  DOUBLE PRECISION version  
+  !
+  !  Arguments
+  !  =========
+  !
+  !  UPLO       (input)       character: specifies whether the full part, or the upper or lower
+  !                           triangular part of the matrix(ces) is(are) being supplied.
+  !  N          (input)        INTEGER: Size system
+  !  A          (input)        COMPLEX DOUBLE PRECISION (LDA,N):  Matrix A 
+  !  LDA        (input)        INTEGER: Leading dimension of matrix A (LDA>=N)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!! LIST of FEAST ARGUMENTS COMMON TO ALL FEAST INTERFACES
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  !  fpm (input/output) INTEGER(*) : FEAST parameters
+  !  epsout     (output)       REAL DOUBLE PRECISION : Error on the trace
+  !  loop       (output)       INTEGER : # of iterative loop to reach convergence 
+  !  Emin,Emax  (input)        REAL DOUBLE PRECISION: search interval
+  !  M0         (input/output) INTEGER: Size subspace
+  !  E          (output)       REAL DOUBLE PRECISION(M0)   : Eigenvalues -solution
+  !  q          (input/output) COMPLEX DOUBLE PRECISION(N,M0) : 
+  !                                                       On entry: subspace initial guess if fpm(5)=1 
+  !                                                       On exit : Eigenvectors-solution
+  !  mode       (output)       INTEGER : # of eigenvalues found in the search interval
+  !  res        (output)       REAL DOUBLE PRECISION(M0) : Relative Residual of the solution (1-norm)
+  !                                                        if option fpm(6)=1 selected                           
+  !  info       (output)       INTEGER: Error handling (0: successful exit)
+  !=====================================================================
+  ! Eric Polizzi 2009-2015
+  ! ====================================================================
+  implicit none
+  include 'f90_noruntime_interface.fi'
+  character(len=1) :: UPLO
+  integer :: N,LDA
+  complex(kind=(kind(1.0d0))),dimension(LDA,*):: A
+  integer,dimension(*) :: fpm
+  double precision :: epsout 
+  integer :: loop
+  double precision :: Emin,Emax
+  integer :: M0
+  double precision,dimension(*)  :: E
+  complex(kind=(kind(1.0d0))),dimension(N,*):: X
+  integer :: mode
+  double precision,dimension(*)    :: res
+  integer :: info
+!!!!!!!!!!!!!!!!!!!!!!
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!    Wrapper Routine to expert routine: zfeast_hegvx
+!!!    Create Zne, Wne arrays
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+  complex(kind=(kind(1.0d0))),dimension(fpm(2)) :: Zne,Wne 
+  complex(kind=(kind(1.0d0))),dimension(1) :: B ! dummy
+  integer :: LDB
+
+    !!!!!!!!!!!!!!!!!!!!!!!!timing 
+    double precision, dimension(0:fpm(4)) :: reslist,timelist
+    double precision, dimension(*) :: times_breakdown_feast
+
+  call zfeast_contour(Emin,Emax,fpm(2),fpm(16),fpm(18),Zne,Wne)
+
+  fpm(29)=1 ! flag to inform expert routine that Zne,Wne generated using default contour
+  LDB=-1 ! B is a dummy- option for standard eigenvalue problem
+  call zfeast_hegvx_timed(UPLO,N,A,LDA,B,LDB,fpm,epsout,loop,Emin,Emax,M0,E,X,mode,res,info,Zne,Wne,reslist,timelist,times_breakdown_feast)
+
+end subroutine zfeast_heev_timed
+
+
+
+
+
+subroutine zfeast_hegvx_timed(UPLO,N,A,LDA,B,LDB,fpm,epsout,loop,Emin,Emax,M0,E,X,mode,res,info,Zne,Wne,reslist,timelist,times_breakdown_feast)
+  !  Purpose 
+  !  =======
+  !  FEAST DENSE INTERFACE
+  !  Solve the generalized Ax=eBx eigenvalue problem
+  !  
+  !  A COMPLEX HERMITIAN, B HERMITIAN POSITIVE DEFINITE:: DENSE FORMAT 
+  ! 
+  !  DOUBLE PRECISION version  
+  !
+  !  Arguments
+  !  =========
+  !
+  !  UPLO       (input)       character: specifies whether the full part, or the upper or lower
+  !                           triangular part of the matrix(ces) is(are) being supplied.
+  !  N          (input)        INTEGER: Size system
+  !  A          (input)        COMPLEX DOUBLE PRECISION (LDA,N):  Matrix A 
+  !  LDA        (input)        INTEGER: Leading dimension of matrix A (LDA>=N)
+  !  B          (input)        COMPLEX DOUBLE PRECISION (LDB,N):  Matrix B 
+  !  LDB        (input)        INTEGER: Leading dimension of matrix B (LDB>=N)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!! LIST of FEAST ARGUMENTS COMMON TO ALL FEAST INTERFACES
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  !  fpm (input/output) INTEGER(*) : FEAST parameters
+  !  epsout     (output)       REAL DOUBLE PRECISION : Error on the trace
+  !  loop       (output)       INTEGER : # of iterative loop to reach convergence 
+  !  Emin,Emax  (input)        REAL DOUBLE PRECISION: search interval
+  !  M0         (input/output) INTEGER: Size subspace
+  !  E          (output)       REAL DOUBLE PRECISION(M0)   : Eigenvalues -solution
+  !  q          (input/output) COMPLEX DOUBLE PRECISION(N,M0) : 
+  !                                                       On entry: subspace initial guess if fpm(5)=1 
+  !                                                       On exit : Eigenvectors-solution
+  !  mode       (output)       INTEGER : # of eigenvalues found in the search interval
+  !  res        (output)       REAL DOUBLE PRECISION(M0) : Relative Residual of the solution (1-norm)
+  !                                                        if option fpm(6)=1 selected                           
+  !  info       (output)       INTEGER: Error handling (0: successful exit)
+  !
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!! LIST of ARGUMENTS FOR EXPERT ROUTINE 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  !  Zne        (input)        COMPLEX DOUBLE PRECISION(fpm(2)): Custom Integration nodes
+  !  Wne        (input)        COMPLEX DOUBLE PRECISION(fpm(2)): Custom Integration weights
+  !           
+  !=====================================================================
+  ! Eric Polizzi 2009-2015
+  !=====================================================================
+  implicit none
+  include 'f90_noruntime_interface.fi'
+  character(len=1) :: UPLO
+  integer :: N,LDA,LDB
+  complex(kind=(kind(1.0d0))),dimension(LDA,*):: A
+  complex(kind=(kind(1.0d0))),dimension(LDB,*):: B
+  integer,dimension(*) :: fpm
+  double precision :: epsout 
+  integer :: loop
+  double precision :: Emin,Emax
+  integer :: M0
+  double precision,dimension(*)  :: E
+  complex(kind=(kind(1.0d0))),dimension(N,*):: X
+  integer :: mode
+  double precision,dimension(*)    :: res
+  integer :: info
+  complex(kind=(kind(1.0d0))),dimension(*) :: Zne,Wne
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  integer :: ijob,infoloc,i,s
+  complex(kind=(kind(1.0d0))) :: Ze
+  complex(kind=(kind(1.0d0))), dimension(:,:),pointer ::work,workc,zAq,zSq
+  complex(kind=(kind(1.0d0))), dimension(:,:,:),pointer :: Az,cAz
+  complex(kind=(kind(1.0d0))), dimension(:),pointer ::ztmp
+  integer, dimension(:,:),pointer ::ipivloc
+  double precision,parameter :: DONE=1.0d0,DZERO=0.0d0
+  complex(kind=(kind(1.0d0))),parameter :: ONEC=(DONE,DZERO),ZEROC=(DZERO,DZERO)
+  logical :: fact
+  integer :: nfact,id
+  integer :: rank,code,nb_procs,NEW_COMM_WORLD
+
+!!!!!!!!!!!!!! for timing
+    double precision, dimension(0:fpm(4)) :: reslist,timelist
+    double precision, dimension(*) :: times_breakdown_feast
+    integer :: totalc1,totalc2,c1,c2
+    integer :: oldloop
+    double precision, external :: elapsed_time
+
+
+    call system_clock(count=totalc1)
+
+
+  rank=0
+  nb_procs=1
+  !----------------------------------------------
+#ifdef MPI
+  NEW_COMM_WORLD=fpm(9)
+  call MPI_COMM_RANK(NEW_COMM_WORLD,rank,code)
+  call MPI_COMM_SIZE(NEW_COMM_WORLD,nb_procs,code)
+#endif
+  !----------------------
+
+  INFO = 0
+  IF ((UPLO/='F').and.(UPLO/='f').and.(UPLO/='L').and.(UPLO/='l').and.(UPLO/='U').and.(UPLO/='u')) THEN
+     INFO=-101
+  ELSE IF ( N<=0 ) THEN
+     INFO = -102
+  ELSE IF(LDA<N ) THEN
+     INFO = -104
+  ELSE IF((LDB<N ).and.(LDB/=-1)) THEN
+     INFO = -106
+  END IF
+  IF( INFO.NE.0 ) THEN
+     CALL XERBLA( 'ZFEAST_HEGV', -INFO+100 )
+     RETURN
+  END IF
+  infoloc=0
+
+  call wallocate_2z(zAq,M0,M0,infoloc)
+  call wallocate_2z(zSq,M0,M0,infoloc)
+  call wallocate_2z(work,N,M0,infoloc)
+  call wallocate_2z(workc,N,M0,infoloc)
+  if (infoloc/=0) then
+     info=-1
+     return
+  end if
+
+
+!!!!!!!!!!!!!!!!!! Factorizations Set-up  
+  fact=.true.
+  nfact=0
+  !! nfact is local (number of total factorization by contour points)
+  do i=rank+1,fpm(2),nb_procs
+     nfact=nfact+1
+  end do
+
+  if (fpm(10)==1) then
+     id=0
+  else
+     id=1
+  end if
+!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  call wallocate_3z(Az,N,N,nfact,infoloc)
+  call wallocate_3z(cAz,N,N,nfact,infoloc)
+
+  call wallocate_2i(ipivloc,N,nfact,infoloc)
+  call wallocate_1z(ztmp,N,infoloc)
+  if (infoloc/=0) then
+     info=-1
+     return
+  end if
+!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  oldloop=0
+  ijob=-1 ! initialization
+  do while (ijob/=0) 
+     call zfeast_hrcix(ijob,N,Ze,work,workc,zAq,zSq,fpm,epsout,loop,Emin,Emax,M0,E,X,mode,res,info,Zne,Wne)
+
+       if (oldloop .ne. loop) then
+            reslist(oldloop)=epsout
+            call system_clock(count=totalc2)
+            timelist(oldloop)=elapsed_time(totalc1,totalc2)
+            print *,'time=',timelist(oldloop)
+            oldloop=loop
+        end if
+
+
+
+     select case(ijob)
+     case(10) !! factorize (zeB-A)
+          call system_clock(count=c1)
+
+        if (fpm(10)==1) then
+           id=id+1
+           if (id==nfact+1) then
+              id=1
+              fact=.false.
+           endif
+        endif
+
+        if (fact) then
+           if (LDB==-1) then !! standard
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Format CONVERSION
+
+              if ((UPLO=='L').or.(UPLO=='l')) then
+                 do i=1,N-1
+                    s=N-i
+                    Az(i:N,i,id)=-A(i:N,i)
+                    Az(i,i,id)=Az(i,i,id)+Ze
+                    call ZCOPY(s,Az(i+1,i,id),1,Az(i,i+1,id),N)
+                    call ZLACGV(s, Az(i,i+1,id), N )
+                 enddo
+                 Az(N,N,id)=Ze-A(N,N)*ONEC
+
+              elseif ((UPLO=='U').or.(UPLO=='u')) then
+                 do i=1,N-1
+                    s=N-i
+                    Az(i,i:N,id)=-A(i,i:N)
+                    Az(i,i,id)=Az(i,i,id)+Ze
+                    call ZCOPY(s,Az(i,i+1,id),N,Az(i+1,i,id),1)
+                    call ZLACGV(s, Az(i+1,i,id), 1 )
+                 enddo
+                 Az(N,N,id)=Ze-A(N,N)*ONEC
+
+              else
+
+                 Az(1:N,1:N,id)=-A(1:N,1:N)
+                 do i=1,N
+                    Az(i,i,id)=Az(i,i,id)+Ze
+                 enddo
+
+              end if
+
+
+           else 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Format CONVERSION
+              if ((UPLO=='L').or.(UPLO=='l')) then
+                 do i=1,N-1
+                    s=N-i
+                    Az(i:N,i,id)=Ze*B(i:N,i)
+                    call ZCOPY(s,Az(i+1,i,id),1,Az(i,i+1,id),N)
+                    call ZLACGV(s, Az(i,i+1,id), N )
+                    call ZSCAL(s,Ze/conjg(Ze),Az(i,i+1,id),N)
+                    Az(i:N,i,id)=Az(i:N,i,id)-A(i:N,i)
+                 enddo
+                 Az(N,N,id)=Ze*B(N,N)-A(N,N)*ONEC
+                 do i=1,N-1
+                    s=N-i
+                    call ZCOPY(s,A(i+1,i),1,ztmp(1),1)
+                    call ZLACGV(s,ztmp(1),1)
+                    call ZAXPY(s,-ONEC,ztmp(1),1,Az(i,i+1,id),N)
+                 enddo
+
+
+              elseif ((UPLO=='U').or.(UPLO=='u')) then
+
+                 do i=1,N-1
+                    s=N-i
+                    Az(i,i:N,id)=Ze*B(i,i:N)
+                    call ZCOPY(s,Az(i,i+1,id),N,Az(i+1,i,id),1)
+                    call ZLACGV(s, Az(i+1,i,id), 1 )
+                    call ZSCAL(s,Ze/conjg(Ze),Az(i+1,i,id),1)
+                    Az(i,i:N,id)=Az(i,i:N,id)-A(i,i:N)
+                 enddo
+                 Az(N,N,id)=Ze*B(N,N)-A(N,N)*ONEC
+                 do i=1,N-1
+                    s=N-i
+                    call ZCOPY(s,A(i,i+1),N,ztmp(1),1)
+                    call ZLACGV(s,ztmp(1),1)
+                    call ZAXPY(s,-ONEC,ztmp(1),1,Az(i+1,i,id),1)
+                 enddo
+              else ! full 
+                 Az(1:N,1:N,id)=Ze*B(1:N,1:N)-A(1:N,1:N)
+              end if
+           end if
+
+           if(fpm(11)==0) then
+           call ZGETRF(N,N,Az(1,1,id),N,IPIVloc(1,id),INFOloc)     
+           if (infoloc/=0) then
+              info=-2
+              return
+           end if
+           end if
+        end if ! fact true
+            call system_clock(count=c2)
+            print *,'   factorize time=',elapsed_time(c1,c2)
+            times_breakdown_feast(2)=times_breakdown_feast(2)+elapsed_time(c1,c2)
+     case(11) !!solve the linear system (ZeB-A)x=workc(1:N,1:fpm(23)) result in to workc
+            call system_clock(count=c1)
+
+        call ZGETRS( 'N', N, fpm(23), Az(1,1,id), N, IPIVloc(1,id), workc, N, INFOloc )
+        if (infoloc/=0) then
+           info=-2
+           return
+        end if
+
+            call system_clock(count=c2)
+            print *,'   solve time=',elapsed_time(c1,c2)
+            times_breakdown_feast(3)=times_breakdown_feast(3)+elapsed_time(c1,c2)
+
+     case(20) 
+        !cAz(1:N,1:N,id)=conjg(Ze)*B(1:N,1:N)-A(1:N,1:N)
+        cAz(1:N,1:N,id)=transpose(conjg(Az(1:n,1:n,id)))
+
+     case(21) !!solve the linear system (ZeB-A)^H x=workc(1:N,1:fpm(23)) result in to workc
+
+         call system_clock(count=c1)
+
+        !cAz(1:N,1:N,id)=transpose(conjg(Az(1:n,1:n,id)))
+
+        call ZGETRS( 'C', N, fpm(23), Az(1,1,id), N, IPIVloc(1,id), workc, N, INFOloc )
+        if (infoloc/=0) then
+           info=-2
+           return
+        end if
+        
+            call system_clock(count=c2)
+            print *,'   solve time=',elapsed_time(c1,c2)
+            times_breakdown_feast(3)=times_breakdown_feast(3)+elapsed_time(c1,c2)
+
+     case(30) !! perform multiplication A*x(1:N,fpm(24):fpm(24)+fpm(25)-1) result in work(1:N,fpm(24)+fpm(25)-1)
+          call system_clock(count=c1)
+        if ((UPLO=='F').or.(UPLO=='f')) then
+           call ZGEMM('N','N',N,fpm(25),N,ONEC,A,LDA,X(1,fpm(24)),N,ZEROC,work(1,fpm(24)),N)
+        else
+           call ZHEMM ('L', UPLO, N, fpm(25), ONEC, A, LDA, X(1,fpm(24)), N, ZEROC,work(1,fpm(24)), N)
+        endif
+            call system_clock(count=c2)
+            print *,'   mm time=',elapsed_time(c1,c2),fpm(24),m0
+            times_breakdown_feast(1)=times_breakdown_feast(1)+elapsed_time(c1,c2)
+     case(40) !! perform multiplication B*x(1:N,fpm(24):fpm(24)+fpm(25)-1) result in work(1:N,fpm(24)+fpm(25)-1)
+            call system_clock(count=c1)
+        if (LDB==-1) then ! standard
+           call ZLACPY( 'F', N, fpm(25),X(1,fpm(24)) , N, work(1,fpm(24)), N )
+        else
+           if ((UPLO=='F').or.(UPLO=='f')) then
+              call ZGEMM('N','N',N,fpm(25),N,ONEC,B,LDB,X(1,fpm(24)),N,ZEROC,work(1,fpm(24)),N)
+           else
+              call ZHEMM ('L', UPLO, N, fpm(25), ONEC, B, LDB, X(1,fpm(24)), N, ZEROC,work(1,fpm(24)), N)
+           endif
+        end if
+            call system_clock(count=c2)
+            print *,'   mm time=',elapsed_time(c1,c2),fpm(24),m0
+            times_breakdown_feast(1)=times_breakdown_feast(1)+elapsed_time(c1,c2)
+
+     end select
+  end do
+
+    reslist(loop)=epsout
+    call system_clock(count=totalc2)
+    timelist(loop)=elapsed_time(totalc1,totalc2)
+
+  call wdeallocate_2z(zAq)
+  call wdeallocate_2z(zSq)
+  call wdeallocate_2z(work)
+  call wdeallocate_2z(workc)
+  call wdeallocate_3z(Az)
+  call wdeallocate_2i(ipivloc)
+  call wdeallocate_1z(ztmp)
+
+
+end subroutine zfeast_hegvx_timed
+
+
 
 

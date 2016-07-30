@@ -1,0 +1,10 @@
+        !COMPILER-GENERATED INTERFACE MODULE: Thu Jul 28 15:57:23 2016
+        MODULE ZRANDOM_SUBSPACE__genmod
+          INTERFACE 
+            SUBROUTINE ZRANDOM_SUBSPACE(X,N,M)
+              INTEGER(KIND=4) :: M
+              INTEGER(KIND=4) :: N
+              COMPLEX(KIND=8) :: X(N,M)
+            END SUBROUTINE ZRANDOM_SUBSPACE
+          END INTERFACE 
+        END MODULE ZRANDOM_SUBSPACE__genmod
