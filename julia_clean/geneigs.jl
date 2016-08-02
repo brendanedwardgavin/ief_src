@@ -14,9 +14,17 @@ function geneigs(n,eigdist,emin,emax)
 
 	intacc=1e-3
 
+	#get norm of distribution to normalize it:
+	(nrm,err)=quadgk(eigdist,emin,emax,reltol=intacc,maxevals=1e4)
+
+	#calculate and normalize cdf:
 	function cdf(x)
-		(out,err)=quadgk(eigdist,emin,x,reltol=intacc,maxevals=1e4)
-		return out
+		if emin<=x
+			(out,err)=quadgk(eigdist,emin,x,reltol=intacc,maxevals=1e4)
+			return out/nrm	
+		else
+			return 0
+		end
 	end
 
 	for i in 1:n

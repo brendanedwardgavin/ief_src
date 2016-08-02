@@ -2,10 +2,10 @@ include("geneigs.jl")
 
 emin=-5.0
 emax=5.0
-neigs=1000
+neigs=10000
 
-f(x)=exp(-10*(x-1)^2)+exp(-10*(x+1)^2)
-#f(x)=exp(-10*(x-1)^2)
+#f(x)=exp(-10*(x-1)^2)+exp(-10*(x+1)^2)
+f(x)=exp(-10*(x-1)^2)
 (a,err)=quadgk(f,emin,emax)
 eigdist(x)=f(x)/a
 

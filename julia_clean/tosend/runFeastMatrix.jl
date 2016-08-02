@@ -1,6 +1,6 @@
 #using PyPlot
 
-include("feast_lin.jl")
+include("feast.jl")
 include("readMatrix.jl")
 
 A=dreadMatrixCoo("test.mtx")
@@ -12,7 +12,13 @@ emin=3.5
 emax=5.5
 mactual=2
 
-nc=4
+nc=16
+
+#A=readEigs("system2.eigs")
+#=println("reading matrix")
+A=zreadMat("system2.mat")
+println("done. doing problem")
+(n,n)=size(A)=#
 
 x0=rand(Float64,n,m0)
 
