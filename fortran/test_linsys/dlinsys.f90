@@ -29,7 +29,7 @@ double precision :: emin,emax
 !!!!!!!!!!!!!!!!!!!!!!! linear system
 
 double precision, dimension(:,:), allocatable :: dB
-complex (kind=kind(0.0d0)),dimension(:,:), allocatable :: B,X,R
+complex (kind=kind(0.0d0)),dimension(:,:), allocatable :: B,X,R,temp1
 integer :: nrhs
 complex (kind=kind(0.0d0)) :: ze
 
@@ -111,7 +111,7 @@ end if
 !random rhs
 nrhs=m0
 
-allocate(dB(n,m0),B(n,m0),X(n,m0),R(n,m0))
+allocate(dB(n,m0),B(n,m0),X(n,m0),R(n,m0),temp1(n,m0))
 
 call random_number(dB)
 !dB=0.0d0
@@ -120,9 +120,9 @@ call random_number(dB)
 
 B=(1.0d0,0.0d0)*dB
 
-ze=(0.0d0,0.0d0)
+ze=(1.0d0,0.0d0)
 
-call zfeast_cgne(UPLO,n,m0,dsa,isa,jsa,(0.0d0,0.0d0),nnza,B,X,100 )
+call zfeast_cgne(UPLO,n,m0,dsa,isa,jsa,ze,nnza,B,X,100 )
 
 !test convergence
 matdescra(1)='H'
@@ -130,10 +130,9 @@ matdescra(2)=UPLO
 matdescra(3)='N'
 matdescra(4)='F'
 
-R=B
-
-call mkl_zcsrmm('N', n, m0, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), X, n, ze, R, n)
-R=B-R
+temp1=X
+call mkl_zcsrmm('N', n, m0, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), X, n, ze, temp1, n)
+R=B-temp1
 
 error=0.0d0
 do i=1,m0
