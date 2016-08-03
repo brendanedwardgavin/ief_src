@@ -114,11 +114,11 @@ allocate(dB(n,m0),B(n,m0),X(n,m0),R(n,m0))
 call random_number(dB)
 !dB=0.0d0
 !dB(1,1)=1.0
-!dB(2,2)=1.0
+!dB(2,1)=2.5
 
 B=(1.0d0,0.0d0)*dB
 
-call zfeast_cgne(UPLO,n,m0,dsa,isa,jsa,(1.0d0),nnza,B,X,10 )
+call zfeast_cgne(UPLO,n,m0,dsa,isa,jsa,(1.0d0,0.0d0),nnza,B,X,100 )
 
 
 !test convergence
@@ -129,7 +129,7 @@ matdescra(4)='F'
 
 R=B
 
-call mkl_zcsrmm('N', n, m0, n, -1.0d0, matdescra, dsa, jsa, isa, isa(2), X, n, 1.0d0, R, n)
+call mkl_zcsrmm('N', n, m0, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), X, n, (1.0d0,0.0d0), R, n)
 
 error=0.0d0
 do i=1,m0

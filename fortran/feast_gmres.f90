@@ -962,7 +962,8 @@ implicit none
     character, dimension(6) :: matdescra
     integer :: info
 
-    integer :: i,debug
+    integer :: i,j,debug
+    double precision :: error,dtemp
     double precision, external :: dznrm2
 
     debug=0
@@ -975,11 +976,12 @@ implicit none
     !all this allocating is probably slow; maybe have user allocate once and for all?
     allocate(R(n,m),Rnew(n,m),P(n,m),lambda(m,m),psi(m,m),temp1(n,m),sqtemp1(m,m),sqtemp2(m,m),temp2(n,m))
 
+
     !X=0.0
     X(1:n,1:m)=0.0d0
 
     !R=A'*A*X-B
-    call mkl_zcsrmm('C', n, m, n, -1.0d0, matdescra, dsa, jsa, isa, isa(2), B, n, (0.0d0,0.0d0), R, n)
+    call mkl_zcsrmm('C', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), B, n, (0.0d0,0.0d0), R, n)
     !R(1:n,1:m)=-1.0*B(1:n,1:m)
     
     !call mkl_zcsrmm('N', n, m, n, 1.0d0, matdescra, dsa, jsa, isa, isa(2), X, n, 0.0d0, linwork2, n)
@@ -988,16 +990,16 @@ implicit none
     P=-1.0*R
 
     if(debug>0) then
-        print *,'X=',dble(X(1:n,1))
-        print *,'P=',dble(P(1:n,1))
-        print *,'R=',dble(R(1:n,1))
+        print *,'X=',X(1:n,1)
+        print *,'P=',P(1:n,1)
+        print *,'R=',R(1:n,1)
     end if
 
     do i=1,maxit
 
         !lambda=inv(P'*A'*A*P)*R'*R
         !-----temp1=A*P
-        call mkl_zcsrmm('N', n, m, n, 1.0d0, matdescra, dsa, jsa, isa, isa(2), P, n, (0.0d0,0.0d0), temp1, n)
+        call mkl_zcsrmm('N', n, m, n, (1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), P, n, (0.0d0,0.0d0), temp1, n)
         !-----sqtemp=temp1'*temp1
         call zgemm('C','N',m,m,n,(1.0d0,0.0d0),temp1,n,temp1,n,(0.0d0,0.0d0),sqtemp1,m)
         !-----lambda=R'*R    !might be better to do (inv(P'A'AP)R')R, not sure...
@@ -1009,23 +1011,23 @@ implicit none
             stop
         end if
 
-        if(debug>0) print *,'lambda = ', dble(lambda(1,1))
+        if(debug>0) print *,'lambda = ', lambda(1,1)
 
         !X=X+P*lambda
         call zgemm('N','N',n,m,m,(1.0d0,0.0d0),P,n,lambda,m,(1.0d0,0.0d0),X,n)
         
-        if(debug>0) print *,'Xnew = ',dble(X(1:n,1))
+        if(debug>0) print *,'Xnew = ',X(1:n,1)
 
         !Rnew=R+A'*A*P*lambda
         !-----temp1=P*lambda    !maybe do this first and then add it to X?
         call zgemm('N','N',n,m,m,(1.0d0,0.0d0),P,n,lambda,m,(0.0d0,0.0d0),temp1,n)
         !-----temp2=A*temp1
-        call mkl_zcsrmm('N', n, m, n, 1.0d0, matdescra, dsa, jsa, isa, isa(2), temp1, n, (0.0d0,0.0d0), temp2, n)
+        call mkl_zcsrmm('N', n, m, n, (1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), temp1, n, (0.0d0,0.0d0), temp2, n)
         !-----Rnew=R+A'*temp2
         Rnew=R
-        call mkl_zcsrmm('C', n, m, n, 1.0d0, matdescra, dsa, jsa, isa, isa(2), temp2, n, (1.0d0,0.0d0), Rnew, n)
+        call mkl_zcsrmm('C', n, m, n, (1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), temp2, n, (1.0d0,0.0d0), Rnew, n)
         
-        if(debug>0) print *,'Rnew = ', dble(Rnew(1:n,1))
+        if(debug>0) print *,'Rnew = ', Rnew(1:n,1)
 
         !psi=inv(R'*R)*Rnew'*Rnew
         !-----sqtemp1=R'*R
@@ -1039,19 +1041,29 @@ implicit none
             stop
         end if
 
-        if(debug>0) print *,'psi = ', dble(psi(1,1))
+        if(debug>0) print *,'psi = ', psi(1,1)
 
         !P=-Rnew+P*psi
         temp1=P
         P=Rnew
         call zgemm('N','N',n,m,m,(1.0d0,0.0d0),temp1,n,psi,m,(-1.0d0,0.0d0),P,n)
 
-        if(debug>0) print *,'Pnew = ', dble(P(1:n,1))
+        if(debug>0) print *,'Pnew = ', P(1:n,1)
 
         R=Rnew
+       
+        temp2=B(1:n,1:m)
+        call mkl_zcsrmm('N', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), X, n, (1.0d0,0.0d0), temp2, n)
         
-        print *,i,dznrm2(n,R(1:n,1),1)/dznrm2(n,B(1:n,1),1)
-        if(debug>0) stop
+        error=0.0d0
+        do j=1,m
+            dtemp=dznrm2(n,temp2(1:n,j),1)/dznrm2(n,B(1:n,j),1)
+            !dtemp=dznrm2(n,R(1:n,j),1)/dznrm2(n,B(1:n,j),1)
+            if (dtemp>error) error=dtemp
+        end do
+        print *,i,error
+
+        if(debug>0 .and. i>1) stop
     end do
  
     deallocate(R,Rnew,P,lambda,psi,temp1,sqtemp1,sqtemp2,temp2)
