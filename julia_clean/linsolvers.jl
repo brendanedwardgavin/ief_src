@@ -1,7 +1,7 @@
 function blockCGbasic(A1,B1,its)
 
-	A=A1'*A1
-	B=A1'*B1
+	A=A1#A1'*A1
+	B=B1#A1'*B1
 
 	(n,m)=size(B)
 	
@@ -34,6 +34,8 @@ function blockCGbasicnorm(A,B1,its)
 	X=zeros(n,m)
 	R=A'*(A*X)-B
 	P=-1.0*R
+
+	println("X=",X,"\nR=",R,"\nP=",P,"\n\n")
 	
 	for i in 1:its
 		lambda=\((A*P)'*(A*P),R'*R)
@@ -42,7 +44,10 @@ function blockCGbasicnorm(A,B1,its)
 		psi=\(R'*R,Rnew'*Rnew)
 		P=-1.0*Rnew+P*psi
 		R[:]=Rnew
-		#println("$i  res=",norm(B1-A*X)/norm(B1))
+		
+		println("Lambda=",lambda,"\nXnew=",X,"\nRnew=",R,"\npsi=",psi,"\nPnew=",P)
+	
+		println("\n\n$i  res=",norm(B1-A*X)/norm(B1),"\n\n")
 	end	
 
 	return X
