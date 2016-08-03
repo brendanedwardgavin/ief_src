@@ -880,14 +880,14 @@ implicit none
             !end if
             
             !form normal equations:
-            call ZGEMM('C','N',m*m0,m,n,(1.0d0,0.0d0),Av2,n,Av2(1:n,1:m),n,(0.0d0,0.0d0),Rs(1,1),m0*m)
+            call ZGEMM('C','N',m*m0,m*m0,n,(1.0d0,0.0d0),Av2,n,Av2,n,(0.0d0,0.0d0),Rs(1,1),m0*m)
          
             !form reduced right hand side matrix:
-            call ZGEMM('C','N',m*m0,m,n,(1.0d0,0.0d0),Av2,n,V(1:n,1:m),n,(0.0d0,0.0d0),Bs(1,1),m0*m)
+            call ZGEMM('C','N',m*m0,m,n,(1.0d0,0.0d0),Av2,n,V,n,(0.0d0,0.0d0),Bs(1,1),m0*m)
 
             !solve upper triangular system Rs*x=Q'*Bs
             !call ZTRTRS( 'U', 'N', 'N', m*m0, m, Rs, m*m0, Bs, m0*m, info )
-            call ZPOSV( 'U', m*m0, m*m0, Rs, m*m0, Bs, m*m0, info )
+            call ZPOSV( 'U', m*m0, m, Rs, m*m0, Bs, m*m0, info )
             if (info .ne. 0) then
                 print *,'Problem with least squares solution in GMRES'
                 print *,'ZPOSV error info = ',info
@@ -939,7 +939,123 @@ call zlacpy('F',n,m,x(1,1),n,Brhs(1,1),n)
 end subroutine zfeast_gmres_norm
 
 
+subroutine zfeast_cgne(UPLO,n,m,dsa,isa,jsa,ze,nnza,B,X,maxit)
+implicit none
 
+    integer :: n,m,maxit
+    complex (kind=kind(0.0d0)) :: ze
+    character :: UPLO
+
+    !!!!!!!!!!!!!!!!!!!!!!!!  Sparse matrix:
+    complex (kind=kind(0.0d0)),dimension(*) :: dsa
+    integer,dimension(*) :: isa,jsa
+    integer :: nnza
+
+    !!! RHS, solution
+    complex (kind=kind(0.0d0)), dimension(n,*) :: B,X
+
+    !!! CG stuff
+    complex (kind=kind(0.0d0)), dimension(:,:), allocatable :: R,Rnew,P,lambda,psi
+    complex (kind=kind(0.0d0)), dimension(:,:), allocatable :: temp1,temp2,sqtemp1,sqtemp2
+    
+    !!!BLAS and lapack:
+    character, dimension(6) :: matdescra
+    integer :: info
+
+    integer :: i,debug
+    double precision, external :: dznrm2
+
+    debug=0
+
+    matdescra(1)='H'
+    matdescra(2)=UPLO
+    matdescra(3)='N'
+    matdescra(4)='F'
+
+    !all this allocating is probably slow; maybe have user allocate once and for all?
+    allocate(R(n,m),Rnew(n,m),P(n,m),lambda(m,m),psi(m,m),temp1(n,m),sqtemp1(m,m),sqtemp2(m,m),temp2(n,m))
+
+    !X=0.0
+    X(1:n,1:m)=0.0d0
+
+    !R=A'*A*X-B
+    call mkl_zcsrmm('C', n, m, n, -1.0d0, matdescra, dsa, jsa, isa, isa(2), B, n, (0.0d0,0.0d0), R, n)
+    !R(1:n,1:m)=-1.0*B(1:n,1:m)
+    
+    !call mkl_zcsrmm('N', n, m, n, 1.0d0, matdescra, dsa, jsa, isa, isa(2), X, n, 0.0d0, linwork2, n)
+    
+    !P=-R
+    P=-1.0*R
+
+    if(debug>0) then
+        print *,'X=',dble(X(1:n,1))
+        print *,'P=',dble(P(1:n,1))
+        print *,'R=',dble(R(1:n,1))
+    end if
+
+    do i=1,maxit
+
+        !lambda=inv(P'*A'*A*P)*R'*R
+        !-----temp1=A*P
+        call mkl_zcsrmm('N', n, m, n, 1.0d0, matdescra, dsa, jsa, isa, isa(2), P, n, (0.0d0,0.0d0), temp1, n)
+        !-----sqtemp=temp1'*temp1
+        call zgemm('C','N',m,m,n,(1.0d0,0.0d0),temp1,n,temp1,n,(0.0d0,0.0d0),sqtemp1,m)
+        !-----lambda=R'*R    !might be better to do (inv(P'A'AP)R')R, not sure...
+        call zgemm('C','N',m,m,n,(1.0d0,0.0d0),R,n,R,n,(0.0d0,0.0d0),lambda,m)
+        !-----lambda=\(sqtemp1,lambda)
+        call zposv('U',m,m,sqtemp1,m,lambda,m,info)
+        if(info .ne. 0) then
+            print *,'CGNE error: ZPOSV info ',info
+            stop
+        end if
+
+        if(debug>0) print *,'lambda = ', dble(lambda(1,1))
+
+        !X=X+P*lambda
+        call zgemm('N','N',n,m,m,(1.0d0,0.0d0),P,n,lambda,m,(1.0d0,0.0d0),X,n)
+        
+        if(debug>0) print *,'Xnew = ',dble(X(1:n,1))
+
+        !Rnew=R+A'*A*P*lambda
+        !-----temp1=P*lambda    !maybe do this first and then add it to X?
+        call zgemm('N','N',n,m,m,(1.0d0,0.0d0),P,n,lambda,m,(0.0d0,0.0d0),temp1,n)
+        !-----temp2=A*temp1
+        call mkl_zcsrmm('N', n, m, n, 1.0d0, matdescra, dsa, jsa, isa, isa(2), temp1, n, (0.0d0,0.0d0), temp2, n)
+        !-----Rnew=R+A'*temp2
+        Rnew=R
+        call mkl_zcsrmm('C', n, m, n, 1.0d0, matdescra, dsa, jsa, isa, isa(2), temp2, n, (1.0d0,0.0d0), Rnew, n)
+        
+        if(debug>0) print *,'Rnew = ', dble(Rnew(1:n,1))
+
+        !psi=inv(R'*R)*Rnew'*Rnew
+        !-----sqtemp1=R'*R
+        call zgemm('C','N',m,m,n,(1.0d0,0.0d0),R,n,R,n,(0.0d0,0.0d0),sqtemp1,m)
+        !-----sqtemp2=Rnew'*Rnew
+        call zgemm('C','N',m,m,n,(1.0d0,0.0d0),Rnew,n,Rnew,n,(0.0d0,0.0d0),psi,m)
+        !-----psi=\(sqtemp1,psi)
+        call zposv('U',m,m,sqtemp1,m,psi,m,info)
+        if(info .ne. 0) then
+            print *,'CGNE error: second ZPOSV info ',info
+            stop
+        end if
+
+        if(debug>0) print *,'psi = ', dble(psi(1,1))
+
+        !P=-Rnew+P*psi
+        temp1=P
+        P=Rnew
+        call zgemm('N','N',n,m,m,(1.0d0,0.0d0),temp1,n,psi,m,(-1.0d0,0.0d0),P,n)
+
+        if(debug>0) print *,'Pnew = ', dble(P(1:n,1))
+
+        R=Rnew
+        
+        print *,i,dznrm2(n,R(1:n,1),1)/dznrm2(n,B(1:n,1),1)
+        if(debug>0) stop
+    end do
+ 
+    deallocate(R,Rnew,P,lambda,psi,temp1,sqtemp1,sqtemp2,temp2)
+end subroutine
 
 
 subroutine zfeast_gmrespre(ijob,stateVars,Brhs,x,V,Av,Ax,ze,n,m,maxm,eps,restarts,m0,xwork,workin,Av2,times)
