@@ -31,10 +31,12 @@ double precision :: emin,emax
 double precision, dimension(:,:), allocatable :: dB
 complex (kind=kind(0.0d0)),dimension(:,:), allocatable :: B,X,R
 integer :: nrhs
+complex (kind=kind(0.0d0)) :: ze
 
 double precision,external :: dznrm2
 double precision :: error,thenorm
 character, dimension(6) :: matdescra
+
 
 call random_seed()
 
@@ -118,8 +120,9 @@ call random_number(dB)
 
 B=(1.0d0,0.0d0)*dB
 
-call zfeast_cgne(UPLO,n,m0,dsa,isa,jsa,(1.0d0,0.0d0),nnza,B,X,100 )
+ze=(0.0d0,0.0d0)
 
+call zfeast_cgne(UPLO,n,m0,dsa,isa,jsa,(0.0d0,0.0d0),nnza,B,X,100 )
 
 !test convergence
 matdescra(1)='H'
@@ -129,7 +132,8 @@ matdescra(4)='F'
 
 R=B
 
-call mkl_zcsrmm('N', n, m0, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), X, n, (1.0d0,0.0d0), R, n)
+call mkl_zcsrmm('N', n, m0, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), X, n, ze, R, n)
+R=B-R
 
 error=0.0d0
 do i=1,m0

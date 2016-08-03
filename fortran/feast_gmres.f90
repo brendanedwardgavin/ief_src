@@ -941,6 +941,7 @@ end subroutine zfeast_gmres_norm
 
 subroutine zfeast_cgne(UPLO,n,m,dsa,isa,jsa,ze,nnza,B,X,maxit)
 implicit none
+!A=Az=(ze*I-A) in this routine
 
     integer :: n,m,maxit
     complex (kind=kind(0.0d0)) :: ze
@@ -956,7 +957,7 @@ implicit none
 
     !!! CG stuff
     complex (kind=kind(0.0d0)), dimension(:,:), allocatable :: R,Rnew,P,lambda,psi
-    complex (kind=kind(0.0d0)), dimension(:,:), allocatable :: temp1,temp2,sqtemp1,sqtemp2
+    complex (kind=kind(0.0d0)), dimension(:,:), allocatable :: temp1,temp2,sqtemp1,sqtemp2,AP
     
     !!!BLAS and lapack:
     character, dimension(6) :: matdescra
@@ -974,14 +975,14 @@ implicit none
     matdescra(4)='F'
 
     !all this allocating is probably slow; maybe have user allocate once and for all?
-    allocate(R(n,m),Rnew(n,m),P(n,m),lambda(m,m),psi(m,m),temp1(n,m),sqtemp1(m,m),sqtemp2(m,m),temp2(n,m))
-
+    allocate(R(n,m),Rnew(n,m),P(n,m),lambda(m,m),psi(m,m),temp1(n,m),sqtemp1(m,m),sqtemp2(m,m),temp2(n,m),AP(n,m))
 
     !X=0.0
     X(1:n,1:m)=0.0d0
 
     !R=A'*A*X-B
-    call mkl_zcsrmm('C', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), B, n, (0.0d0,0.0d0), R, n)
+    R=B(1:n,1:m)
+    call mkl_zcsrmm('C', n, m, n, (1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), B, n, (-1.0d0,0.0d0)*conjg(ze), R, n)
     !R(1:n,1:m)=-1.0*B(1:n,1:m)
     
     !call mkl_zcsrmm('N', n, m, n, 1.0d0, matdescra, dsa, jsa, isa, isa(2), X, n, 0.0d0, linwork2, n)
@@ -999,9 +1000,10 @@ implicit none
 
         !lambda=inv(P'*A'*A*P)*R'*R
         !-----temp1=A*P
-        call mkl_zcsrmm('N', n, m, n, (1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), P, n, (0.0d0,0.0d0), temp1, n)
+        AP=P
+        call mkl_zcsrmm('N', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), P, n, (1.0d0,0.0d0)*ze, AP, n)
         !-----sqtemp=temp1'*temp1
-        call zgemm('C','N',m,m,n,(1.0d0,0.0d0),temp1,n,temp1,n,(0.0d0,0.0d0),sqtemp1,m)
+        call zgemm('C','N',m,m,n,(1.0d0,0.0d0),AP,n,AP,n,(0.0d0,0.0d0),sqtemp1,m)
         !-----lambda=R'*R    !might be better to do (inv(P'A'AP)R')R, not sure...
         call zgemm('C','N',m,m,n,(1.0d0,0.0d0),R,n,R,n,(0.0d0,0.0d0),lambda,m)
         !-----lambda=\(sqtemp1,lambda)
@@ -1019,14 +1021,15 @@ implicit none
         if(debug>0) print *,'Xnew = ',X(1:n,1)
 
         !Rnew=R+A'*A*P*lambda
-        !-----temp1=P*lambda    !maybe do this first and then add it to X?
-        call zgemm('N','N',n,m,m,(1.0d0,0.0d0),P,n,lambda,m,(0.0d0,0.0d0),temp1,n)
+        !-----temp1=AP*lambda    !maybe do this first and then add it to X?
+        call zgemm('N','N',n,m,m,(1.0d0,0.0d0),AP,n,lambda,m,(0.0d0,0.0d0),temp1,n)
         !-----temp2=A*temp1
-        call mkl_zcsrmm('N', n, m, n, (1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), temp1, n, (0.0d0,0.0d0), temp2, n)
-        !-----Rnew=R+A'*temp2
-        Rnew=R
-        call mkl_zcsrmm('C', n, m, n, (1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), temp2, n, (1.0d0,0.0d0), Rnew, n)
-        
+        !call mkl_zcsrmm('N', n, m, n, (1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), temp1, n, (0.0d0,0.0d0), temp2, n)
+        !-----Rnew=R+A'*temp1
+        temp2=temp1
+        call mkl_zcsrmm('C', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), temp1, n, conjg(ze), temp2, n)
+        Rnew=R+temp2
+
         if(debug>0) print *,'Rnew = ', Rnew(1:n,1)
 
         !psi=inv(R'*R)*Rnew'*Rnew
@@ -1052,9 +1055,10 @@ implicit none
 
         R=Rnew
        
-        temp2=B(1:n,1:m)
-        call mkl_zcsrmm('N', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), X, n, (1.0d0,0.0d0), temp2, n)
-        
+        temp1=X(1:n,1:m)
+        call mkl_zcsrmm('N', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), X, n, ze, temp1, n)
+        temp2=B(1:n,1:m)-temp1
+
         error=0.0d0
         do j=1,m
             dtemp=dznrm2(n,temp2(1:n,j),1)/dznrm2(n,B(1:n,j),1)
@@ -1066,7 +1070,7 @@ implicit none
         if(debug>0 .and. i>1) stop
     end do
  
-    deallocate(R,Rnew,P,lambda,psi,temp1,sqtemp1,sqtemp2,temp2)
+    deallocate(R,Rnew,P,lambda,psi,temp1,sqtemp1,sqtemp2,temp2,AP)
 end subroutine
 
 
