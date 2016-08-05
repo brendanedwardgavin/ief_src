@@ -122,10 +122,16 @@ B=(1.0d0,0.0d0)*dB
 
 ze=(1.0d0,0.0d0)
 
-call zfeast_cgne(UPLO,n,m0,dsa,isa,jsa,ze,nnza,B,X,100 )
+call zfeast_cgls(UPLO,n,m0,dsa,isa,jsa,ze,nnza,B,X,100 )
 
 !test convergence
-matdescra(1)='H'
+
+if(UPLO=='F') then
+    matdescra(1)='G'
+else
+    matdescra(1)='H'
+end if
+!matdescra(1)='H'
 matdescra(2)=UPLO
 matdescra(3)='N'
 matdescra(4)='F'

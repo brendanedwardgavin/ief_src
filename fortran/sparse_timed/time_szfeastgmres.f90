@@ -82,6 +82,8 @@ character(5) :: m0str,cpstr
 !!!!!!!!!!!!!!!!!!!!!! MPI
 integer :: rank,code
 
+double precision, dimension(:,:),allocatable :: xr
+
 !-DMPI
 !#ifdef MPI
 !call mpi_comm_rank(rank,MPI_COMM_WORLD)
@@ -89,7 +91,7 @@ integer :: rank,code
 !#endif
 
 meas_acc=1
-print_times=1
+print_times=0
 
 times_gm=0.0d0
 time_ls=0.0d0
@@ -100,6 +102,8 @@ times_breakdown_feast=0.0d0
 
 
 allocate(zt1(n,m0),zt2(n,m0),zt3(n,m0))
+
+allocate(xr(n,m0))
 
 allocate(res(m0))
 allocate(e(m0))
@@ -166,9 +170,15 @@ call system_clock(count=totalc1)
 ijob=-1
 oldloop=0
 cpcount=1
+
+fpm(5)=1
+
+call random_number(xr)
+x=xr*(1.0d0,0.0d0)
+
 do while (ijob .ne. 0)
 
-call zfeast_hrcix(ijob,n,ze,work,zwork,aq,bq,fpm,epsout,loop,emin,emax,m0,e,x,m,res,info,Zne,Wne)
+call zfeast_hrci(ijob,n,ze,work,zwork,aq,bq,fpm,epsout,loop,emin,emax,m0,e,x,m,res,info)!,Zne,Wne)
 
 if (oldloop .ne. loop) then
     reslist(oldloop)=epsout
@@ -184,7 +194,9 @@ end if
             ze2=ze	
 		
         case (11) !solve linear system Az*Qz=zwork for Qz, put Qz in zwork 
-            
+           
+            print *,'c11 ze2=',ze2
+            print *,'    zwork->',sum(zwork(:,1))
 
             if(meas_acc) zt1=zwork
 
@@ -205,23 +217,40 @@ end if
             maxeig=maxm
 
             call system_clock(count=linc1)
-            do while (linState(1) .ne. 0)
-                     
-                call zfeast_gmres(linjob,linState,zwork,xsol,V,Av,Ax,ze2,n,m0,maxeig,lineps,linIterations,kdim,linwork1,linwork2,zwork2,times_gm)
-                linitout=linState(2) 
+            if(fpm(11)==1) then
+                do while (linState(1) .ne. 0)
+                         
+                    call zfeast_gmres(linjob,linState,zwork,xsol,V,Av,Ax,ze2,n,m0,maxeig,lineps,linIterations,kdim,linwork1,linwork2,zwork2,times_gm)
+                    linitout=linState(2) 
 
-                if(linjob == 30) then
-                    
-                    !Your matrix multiplication routine goes here! do linwork2=A*linwork1
-                    call system_clock(count=c1)
-                    !call zgemm('N','N',n,m0,n,(1.0d0,0.0d0),A,n,linwork1,n,(0.0d0,0.0d0),linwork2,n)
-                    call mkl_zcsrmm('N', n, m0, n, 1.0d0, matdescra, dsa, jsa, isa, isa(2), linwork1, n, 0.0d0, linwork2, n)
-                    !linwork2=matmul(A,linwork1)
-                    call system_clock(count=c2)
-                    time_mm=time_mm+elapsed_time(c1,c2)
-                    if(print_times) print *,'mm gmres 11',elapsed_time(c1,c2)
-                end if
-            end do
+                    if(linjob == 30) then
+                        
+                        !Your matrix multiplication routine goes here! do linwork2=A*linwork1
+                        call system_clock(count=c1)
+                        !call zgemm('N','N',n,m0,n,(1.0d0,0.0d0),A,n,linwork1,n,(0.0d0,0.0d0),linwork2,n)
+                        call mkl_zcsrmm('N', n, m0, n, 1.0d0, matdescra, dsa, jsa, isa, isa(2), linwork1, n, 0.0d0, linwork2, n)
+                        !linwork2=matmul(A,linwork1)
+                        call system_clock(count=c2)
+                        time_mm=time_mm+elapsed_time(c1,c2)
+                        if(print_times) print *,'mm gmres 11',elapsed_time(c1,c2)
+                    end if
+                end do
+            end if
+
+            if(fpm(11)==2) then
+
+                call zfeast_cgne(UPLO,n,m0,dsa,isa,jsa,ze2,nnza,zwork,linwork1,linIterations)
+                zwork=linwork1
+
+            end if
+
+            if(fpm(11)==3) then
+
+                call zfeast_cgls(UPLO,n,m0,dsa,isa,jsa,ze2,nnza,zwork,linwork1,linIterations)
+                zwork=linwork1
+
+            end if
+
             call system_clock(count=linc2)
             time_ls=time_ls+times_gm
             time_linsys=time_linsys+elapsed_time(linc1,linc2)
@@ -237,6 +266,7 @@ end if
             maxres=0.0d0
             do i=1,m0
                tempreslist(i)=dznrm2(n,zt3(1:n,i),1)/dznrm2(n,zt1(1:n,i),1)
+               print *,i,tempreslist(i)
                rhsreslistavg(loop,i)=rhsreslistavg(loop,i)+tempreslist(i)/dble(fpm(2))
                rhsreslistcp(cpcount,loop,i)=tempreslist(i)
             end do
@@ -264,6 +294,13 @@ end if
             cpcount=cpcount+1
             
         case(21)
+            
+            zwork=conjg(zwork)
+            ze2=conjg(ze2)
+            
+            print *,'c21 ze2=',ze2
+            print *,'    zwork->',sum(zwork(:,1))
+
             if(meas_acc) zt1=zwork
 
             if(epsout>0.0d0) then
@@ -274,25 +311,44 @@ end if
 
             linState(1)=-1 !set linsate(1)=-1 to begin RCI routine dfeast_gmres
             call system_clock(count=linc1)
-            do while (linState(1) .ne. 0)
+            if(fpm(11)==1) then
+                do while (linState(1) .ne. 0)
 
-                !call system_clock(count=c1)
-                call zfeast_gmres(linjob,linState,zwork,xsol,V,Av,Ax,conjg(ze2),n,m0,maxeig,lineps,linIterations,kdim,linwork1,linwork2,zwork2,times_gm)
-                !call system_clock(count=c2)
-                !time_gmres=time_gmres+elapsed_time(c1,c2)
+                    !call system_clock(count=c1)
+                    call zfeast_gmres(linjob,linState,zwork,xsol,V,Av,Ax,conjg(ze2),n,m0,maxeig,lineps,linIterations,kdim,linwork1,linwork2,zwork2,times_gm)
+                    !call system_clock(count=c2)
+                    !time_gmres=time_gmres+elapsed_time(c1,c2)
+                    
+                    if(linjob == 30) then
+                        !Your matrix multiplication routine goes here! do linwork2=A*linwork1
+                        call system_clock(count=c1)
+                        !call zgemm('N','N',n,m0,n,(1.0d0,0.0d0),A,n,linwork1,n,(0.0d0,0.0d0),linwork2,n)
+                        call mkl_zcsrmm('N', n, m0, n, 1.0d0, matdescra, dsa, jsa, isa, isa(2), linwork1, n, 0.0d0, linwork2, n)
+                        !linwork2=matmul(A,linwork1)
+                        call system_clock(count=c2)
+                        time_mm=time_mm+elapsed_time(c1,c2)
+                        if(print_times) print *,'mm gmres 21',elapsed_time(c1,c2)
+                    end if
+                end do 
+            end if
+
+            
+            if(fpm(11)==2) then
                 
-                if(linjob == 30) then
-                    !Your matrix multiplication routine goes here! do linwork2=A*linwork1
-                    call system_clock(count=c1)
-                    !call zgemm('N','N',n,m0,n,(1.0d0,0.0d0),A,n,linwork1,n,(0.0d0,0.0d0),linwork2,n)
-                    call mkl_zcsrmm('N', n, m0, n, 1.0d0, matdescra, dsa, jsa, isa, isa(2), linwork1, n, 0.0d0, linwork2, n)
-                    !linwork2=matmul(A,linwork1)
-                    call system_clock(count=c2)
-                    time_mm=time_mm+elapsed_time(c1,c2)
-                    if(print_times) print *,'mm gmres 21',elapsed_time(c1,c2)
-                end if
-            end do
+                call zfeast_cgne(UPLO,n,m0,dsa,isa,jsa,conjg(ze2),nnza,zwork,linwork1,linIterations)
+                zwork=linwork1
+
+            end if
+           
+            if(fpm(11)==3) then
+
+                call zfeast_cgls(UPLO,n,m0,dsa,isa,jsa,conjg(ze2),nnza,zwork,linwork1,linIterations)
+                zwork=linwork1
+
+            end if
+
             call system_clock(count=linc2)
+
             time_linsys=time_linsys+elapsed_time(linc1,linc2)
             time_ls=time_ls+times_gm
             
@@ -310,11 +366,14 @@ end if
             maxres=0.0d0
             do i=1,maxm
                tempres=dznrm2(n,zt3(1:n,i),1)/dznrm2(n,zt1(1:n,i),1)
+               print *,i,tempres
                if(tempres>maxres) maxres=tempres
             end do
             print *,"lin sys error 2 =",maxres,linState(2)
             print *,''
             end if
+
+            zwork=conjg(zwork)
 
         case (30) !A*x	
             
@@ -346,7 +405,7 @@ end if
 print *,'FEAST finished; # eigs found = ',m
 print *, 'eigenvalues and eigenvector residuals:'
 do i=1,min(m,m0)
-    print *,i,e(i),res(i)
+!    print *,i,e(i),res(i)
 end do
 
 
@@ -378,7 +437,7 @@ print *,'      Percent:',100*times_breakdown_feast(3)/time_total
 print *,''
 print *,'Residuals:'
 do i=1,m0
-    print *,i,res(i)
+!    print *,i,res(i)
 end do
 print *,''
 
