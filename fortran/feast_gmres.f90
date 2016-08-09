@@ -962,6 +962,7 @@ implicit none
     !!!BLAS and lapack:
     character, dimension(6) :: matdescra
     integer :: info
+    integer, dimension(m) :: ipiv
 
     integer :: i,j,debug
     double precision :: error,dtemp
@@ -1013,9 +1014,10 @@ implicit none
         !-----lambda=R'*R    !might be better to do (inv(P'A'AP)R')R, not sure...
         call zgemm('C','N',m,m,n,(1.0d0,0.0d0),R,n,R,n,(0.0d0,0.0d0),lambda,m)
         !-----lambda=\(sqtemp1,lambda)
-        call zposv('U',m,m,sqtemp1,m,lambda,m,info)
+        !call zposv('U',m,m,sqtemp1,m,lambda,m,info)
+        call zgesv(m,m,sqtemp1,m,ipiv,lambda,m,info)
         if(info .ne. 0) then
-            print *,'CGNE error: ZPOSV info ',info
+            print *,'CGLS error: ZGESV info ',info
             stop
         end if
 
@@ -1041,9 +1043,10 @@ implicit none
         !-----sqtemp2=Rnew'*Rnew
         call zgemm('C','N',m,m,n,(1.0d0,0.0d0),Rnew,n,Rnew,n,(0.0d0,0.0d0),psi,m)
         !-----psi=\(sqtemp1,psi)
-        call zposv('U',m,m,sqtemp1,m,psi,m,info)
+        !call zposv('U',m,m,sqtemp1,m,psi,m,info)
+        call zgesv(m,m,sqtemp1,m,ipiv,psi,m,info)
         if(info .ne. 0) then
-            print *,'CGNE error: second ZPOSV info ',info
+            print *,'CGLS error: second ZGESV info ',info
             stop
         end if
 
