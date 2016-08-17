@@ -40,7 +40,7 @@ A=F*A*F'
 
 #A=A'*A
 
-m=5
+m=1
 
 b=rand(n,m)
 
@@ -50,7 +50,8 @@ b=rand(n,m)
 #X=gmres(A,b,A,5,1)
 
 #X=blockCGbasicnorm(A,b,2500)
-X=blockCGbasic(A,b,2500)
+#X=blockCGbasic(A,b,50)
+X=stationaryIt(A,b,2,10)
 
 
 println("\n\nLin sys residual = ",norm(b-A*X)/norm(b),"\n\n")

@@ -1,8 +1,7 @@
 #using PyPlot
 
-#TRY USING FOLDED SPECTRUM
-
 include("feast_lin.jl")
+include("krylov.jl")
 include("linsolvers.jl")
 include("geneigs.jl")
 #importall juliaFEAST
@@ -12,7 +11,7 @@ srand(3)
 n=1000
 
 distmin=-50.0
-distmax=3.0
+distmax=21.0
 
 #eigdist(x)=exp(x)
 #eigdist(x)=exp(-10*(x-1)^2)
@@ -38,7 +37,7 @@ A=xacc*lambda*xacc'
 
 A=F*A*F'
 
-m0=100
+m0=1
 nc=4
 eps=1e-16
 maxit=300
@@ -102,16 +101,24 @@ end
 
 x0=rand(Float64,n,m0)
 
+emid=((emax+emin)/2.0)
+demid=((emax-emin)/2.0)
 emin2=0.0
-emax2=(emax-(emin+emax)/2.0)^2
-A2=(A-((emin+emax)/2.0)*eye(n))^2
+emax2=demid^2
+A2=(A-emid*eye(n))^2
 
 A2=A
 emin2=emin
 emax2=emax
 
 
-(E,X,res,its)=feast_lin(A2,B,x0,nc,emin2,emax2,m0,eps,maxit,linsolve)
+
+#(E,X,res,its)=feast_lin(A2,B,x0,nc,emin2,emax2,m0,eps,maxit,linsolve)
+
+#(E,X)=basic_krylov(A2,x0,50)
+(E,X)=folded_krylov(A2,x0,200,emin,emax)
+#(E,X)=restart_krylov(A2,x0,20,20)
+#(E,X)=mid_krylov(A,x0,100)
 
 println("\n [Emin,Emax] = [ $emin, $emax]\n")
 
@@ -128,10 +135,21 @@ println("\n\nActual Eigs:")
 
 #plot(res)
 
-#rx=A*X-B*X*diagm(E)
-rx=A*X-B*X*X'*A*X*inv(X'*B*X)
+rx=A*X-B*X*diagm(E)
+#rx=A*X-B*X*X'*A*X*inv(X'*B*X)
 X2=A*X
 println("Residuals:")
-for i in 1:m0
-	#println("$i   $(norm(rx[:,i])/norm(X[:,i]))")
+
+m02=size(X,2)
+resE=zeros(m02,2)
+
+for i in 1:m02
+	resE[i,1]=norm(rx[:,i])/norm(X[:,i])
+	resE[i,2]=E[i]
+end
+
+sortedResE=sortrows(resE,by=x->x[1])
+
+for i in 1:m02
+	println("$i    $(sortedResE[i,1])    $(sortedResE[i,2])")
 end

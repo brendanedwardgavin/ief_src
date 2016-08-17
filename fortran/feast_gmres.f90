@@ -35,7 +35,7 @@ end subroutine zprintMat
 
 
 subroutine selection_sort(list,n) !sort list to be smallest to biggest; not good for really big lists
-    double precision, dimension(:) :: list
+    double precision, dimension(*),intent(inout) :: list
     integer :: n
 
     integer :: i,j
@@ -79,7 +79,11 @@ recursive subroutine quicksort(list,lo,hi)
     temp=list(i)
     list(i)=list(hi)
     list(hi)=temp
+    
+    call quicksort(list,lo,i-1)
+    call quicksort(list,i+1,hi)
     end if
+
 end subroutine quicksort
 
 
@@ -937,6 +941,199 @@ ijob=11
 call zlacpy('F',n,m,x(1,1),n,Brhs(1,1),n)
 !stop
 end subroutine zfeast_gmres_norm
+
+
+
+subroutine zfeast_cglsRes(UPLO,n,m,dsa,isa,jsa,ze,nnza,B,X,maxit,eps,neigs,error)
+implicit none
+!A=Az=(ze*I-A) in this routine
+
+    integer :: n,m,maxit,neigs
+    complex (kind=kind(0.0d0)) :: ze
+    double precision :: eps,error  !target error, output error
+    character :: UPLO
+
+    !!!!!!!!!!!!!!!!!!!!!!!!  Sparse matrix:
+    complex (kind=kind(0.0d0)),dimension(*) :: dsa
+    integer,dimension(*) :: isa,jsa
+    integer :: nnza
+
+    !!! RHS, solution
+    complex (kind=kind(0.0d0)), dimension(n,*) :: B,X
+
+    !!! CG stuff
+    complex (kind=kind(0.0d0)), dimension(:,:), allocatable :: R,Rnew,P,lambda,psi,T,D
+    complex (kind=kind(0.0d0)), dimension(:,:), allocatable :: temp1,temp2,sqtemp1,sqtemp2
+    
+    !!!BLAS and lapack:
+    character, dimension(6) :: matdescra
+    integer :: info
+    integer, dimension(m) :: ipiv
+
+    integer :: i,j,debug,its
+    double precision :: dtemp
+    double precision, external :: dznrm2
+    double precision, dimension(:),allocatable :: errorlist
+    double precision :: errorprint
+
+    if (m<neigs) then
+        print *,'zfeast_cglsRes error: neigs > m',neigs,m
+        stop
+    endif
+
+    allocate(errorlist(m))
+
+    debug=0
+
+    if(UPLO=='F') then
+        matdescra(1)='G'
+    else
+        matdescra(1)='H'
+    end if
+    matdescra(2)=UPLO
+    matdescra(3)='N'
+    matdescra(4)='F'
+
+    !all this allocating is probably slow; maybe have user allocate once and for all?
+    allocate(R(n,m),Rnew(n,m),P(n,m),lambda(m,m),psi(m,m),temp1(n,m),sqtemp1(m,m),sqtemp2(m,m),temp2(n,m),D(n,m),T(n,m))
+
+    !X=0.0
+    X(1:n,1:m)=0.0d0
+
+    D=B(1:n,1:m)
+
+    !R=A'*B
+    R=B(1:n,1:m)
+    call mkl_zcsrmm('C', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), B, n, (1.0d0,0.0d0)*conjg(ze), R, n)
+    !R(1:n,1:m)=-1.0*B(1:n,1:m)
+    
+    !call mkl_zcsrmm('N', n, m, n, 1.0d0, matdescra, dsa, jsa, isa, isa(2), X, n, 0.0d0, linwork2, n)
+    
+    !P=-R
+    P=R
+
+    if(debug>0) then
+        print *,'X=',X(1:n,1)
+        print *,'P=',P(1:n,1)
+        print *,'R=',R(1:n,1)
+    end if
+
+    its=0
+
+    do i=1,maxit
+        its=its+1
+        !lambda=inv(P'*A'*A*P)*R'*R
+        !-----T=A*P
+        T=P
+        call mkl_zcsrmm('N', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), P, n, ze, T, n)
+        !-----sqtemp=T'*T
+        call zgemm('C','N',m,m,n,(1.0d0,0.0d0),T,n,T,n,(0.0d0,0.0d0),sqtemp1,m)
+        !-----lambda=R'*R    !might be better to do (inv(P'A'AP)R')R, not sure...
+        call zgemm('C','N',m,m,n,(1.0d0,0.0d0),R,n,R,n,(0.0d0,0.0d0),lambda,m)
+        !-----lambda=\(sqtemp1,lambda)
+        !call zposv('U',m,m,sqtemp1,m,lambda,m,info)
+        call zgesv(m,m,sqtemp1,m,ipiv,lambda,m,info)
+        if(info .ne. 0) then
+            print *,'CGLS error: ZGESV info ',info
+            stop
+        end if
+
+        if(debug>0) print *,'lambda = ', lambda(1,1)
+
+        !X=X+P*lambda
+        call zgemm('N','N',n,m,m,(1.0d0,0.0d0),P,n,lambda,m,(1.0d0,0.0d0),X,n)
+        
+        if(debug>0) print *,'Xnew = ',X(1:n,1)
+
+        !D=D-T*lambda
+        call zgemm('N','N',n,m,m,(-1.0d0,0.0d0),T,n,lambda,m,(1.0d0,0.0d0),D,n)
+
+        !Rnew=A'*D 
+        Rnew=D
+        call mkl_zcsrmm('C', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), D, n, conjg(ze), Rnew, n)
+
+        !measure residual
+        error=0.0d0
+        do j=1,m
+            errorlist(j)=dznrm2(n,D(:,j),1)/dznrm2(n,B(:,j),1)
+        end do
+
+        call quicksort(errorlist,1,m)
+        !call selection_sort(errorlist,m)
+        !error=errorlist(neigs)
+        error=errorlist(m)!errorlist(neigs)!(m)
+        errorprint=errorlist(neigs)
+
+        print *,error
+
+        if(error<eps) exit !if error is low enough, end loop
+
+        if(debug>0) print *,'Rnew = ', Rnew(1:n,1)
+
+        !psi=inv(R'*R)*Rnew'*Rnew
+        !-----sqtemp1=R'*R
+        call zgemm('C','N',m,m,n,(1.0d0,0.0d0),R,n,R,n,(0.0d0,0.0d0),sqtemp1,m)
+        !-----sqtemp2=Rnew'*Rnew
+        call zgemm('C','N',m,m,n,(1.0d0,0.0d0),Rnew,n,Rnew,n,(0.0d0,0.0d0),psi,m)
+        !-----psi=\(sqtemp1,psi)
+        !call zposv('U',m,m,sqtemp1,m,psi,m,info)
+        call zgesv(m,m,sqtemp1,m,ipiv,psi,m,info)
+        if(info .ne. 0) then
+            print *,'CGLS error: second ZGESV info ',info
+            stop
+        end if
+
+        if(debug>0) print *,'psi = ', psi(1,1)
+
+        !P=Rnew+P*psi
+        temp1=P
+        P=Rnew
+        call zgemm('N','N',n,m,m,(1.0d0,0.0d0),temp1,n,psi,m,(1.0d0,0.0d0),P,n)
+
+        if(debug>0) print *,'Pnew = ', P(1:n,1)
+
+        R=Rnew
+       
+        !temp1=X(1:n,1:m)
+        !call mkl_zcsrmm('N', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), X, n, ze, temp1, n)
+        !temp2=B(1:n,1:m)-temp1
+        !error=0.0d0
+        !do j=1,m
+        !    dtemp=dznrm2(n,temp2(1:n,j),1)/dznrm2(n,B(1:n,j),1)
+        !   !dtemp=dznrm2(n,R(1:n,j),1)/dznrm2(n,B(1:n,j),1)
+        !    if (dtemp>error) error=dtemp
+        !end do
+        !print *,i,error
+
+        if(debug>0 .and. i>1) stop
+    end do  
+    
+    print *,'   linits=',its
+    print *,'      errors=',error,errorprint
+    if (error<errorprint) then
+        do i=1,m
+        !print *,'   ',errorlist(i)
+        end do
+    end if
+
+    !measure actual error:
+    !temp1=X(1:n,1:m)
+    !call mkl_zcsrmm('N', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), X, n, ze, temp1, n)
+    !temp2=B(1:n,1:m)-temp1
+    !do j=1,m
+    !    errorlist(j)=dznrm2(n,temp2(1:n,j),1)/dznrm2(n,B(1:n,j),1)
+    !end do
+    !call quicksort(errorlist,1,m)
+    !errorprint=errorlist(neigs)
+    !error=errorlist(m)
+    !print *,'      acterr=',error,errorprint
+
+    !stop
+
+    deallocate(errorlist,R,Rnew,P,lambda,psi,temp1,sqtemp1,sqtemp2,temp2,T,D)
+end subroutine zfeast_cglsRes
+
+
 
 
 subroutine zfeast_cgls(UPLO,n,m,dsa,isa,jsa,ze,nnza,B,X,maxit)

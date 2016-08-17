@@ -172,6 +172,8 @@ subroutine dfeast_scsrgvxit(UPLO,N,sa,isa,jsa,sb,isb,jsb,fpm,epsout,loop,Emin,Em
     complex(kind=(kind(1.0d0))) :: ze2 
     complex(kind=(kind(1.0d0))), dimension(:,:), pointer :: ztempmat
     complex(kind=(kind(1.0d0))),dimension(:),pointer :: zsa
+    integer :: linresindex !number of RHS to use in measuring linear system error
+    double precision :: lintargeterror,linsyserror !goal error for linear system, return linear system error
 
     rank=0
     nb_procs=1
@@ -367,7 +369,7 @@ subroutine dfeast_scsrgvxit(UPLO,N,sa,isa,jsa,sb,isb,jsb,fpm,epsout,loop,Emin,Em
     ijob=-1 ! initialization 
     do while (ijob/=0)
        call dfeast_srcix(ijob,N,Ze,work,workc,Aq,Sq,fpm,epsout,loop,Emin,Emax,M0,E,X,mode,res,info,Zne,Wne)    
-
+        !print *,epsout
        select case(ijob)
        case(10) !! factorize (zeB-A)
 
@@ -420,7 +422,23 @@ subroutine dfeast_scsrgvxit(UPLO,N,sa,isa,jsa,sb,isb,jsb,fpm,epsout,loop,Emin,Em
                  return
               end if
         else
-              call zfeast_cgls(UPLO,n,m0,zsa,isa,jsa,ze2,nnza,workc,ztempmat,fpm(50)) 
+              !call zfeast_cgls(UPLO,n,m0,zsa,isa,jsa,ze2,nnza,workc,ztempmat,fpm(50)) 
+              if (mode>0 .and. mode<=m0) then
+                  linresindex=mode
+              else
+                  linresindex=m0
+              end if
+
+              if(epsout <=1.0d-1 .and. loop>0) then
+                  lintargeterror=epsout!1d-1*epsout
+              else
+                  lintargeterror=1d-1
+              endif
+
+              !if (loop<3) linresindex=m0
+              
+              call zfeast_cglsRes(UPLO,n,m0,zsa,isa,jsa,ze2,nnza,workc,ztempmat,fpm(50),lintargeterror,linresindex,linsyserror) 
+
               workc=ztempmat
         end if
 

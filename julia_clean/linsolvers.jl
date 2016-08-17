@@ -35,7 +35,7 @@ function blockCGbasicnorm(A,B1,its)
 	R=A'*(A*X)-B
 	P=-1.0*R
 
-	println("X=",X,"\nR=",R,"\nP=",P,"\n\n")
+	#println("X=",X,"\nR=",R,"\nP=",P,"\n\n")
 	
 	for i in 1:its
 		lambda=\((A*P)'*(A*P),R'*R)
@@ -45,9 +45,9 @@ function blockCGbasicnorm(A,B1,its)
 		P=-1.0*Rnew+P*psi
 		R[:]=Rnew
 		
-		println("Lambda=",lambda,"\nXnew=",X,"\nRnew=",R,"\npsi=",psi,"\nPnew=",P)
+		#println("Lambda=",lambda,"\nXnew=",X,"\nRnew=",R,"\npsi=",psi,"\nPnew=",P)
 	
-		println("\n\n$i  res=",norm(B1-A*X)/norm(B1),"\n\n")
+		#println("\n\n$i  res=",norm(B1-A*X)/norm(B1),"\n\n")
 	end	
 
 	return X
@@ -297,3 +297,50 @@ function gmres_lsSolve(A,B,Pinv,m0)
 	#X=Q*Xs
 end
 
+
+
+function stationaryIt(A,B,band,its)
+	(n,m)=size(B)
+	xmax=rand(n)
+	xmax=xmax/norm(xmax)
+	lmax=0.0
+	for i in 1:100
+		xmax=A*xmax
+		lmax=norm(xmax)
+		xmax=xmax/lmax
+	end
+
+	Anorm=zeros(n,n)
+	Anorm[:]=A#/(1.05*lmax)
+
+	C=zeros(n,n)
+	C[:]=Anorm
+	N=zeros(n,n)
+	for i in band+1:n
+		for j in 1:i-band
+			C[i,j]=0.0
+			C[j,i]=0.0
+			N[i,j]=A[i,j]
+			N[j,i]=A[j,i]
+		end
+	end
+
+	#println("A:\n$Anorm")
+	#println("C:\n$C")
+	#println("N:\n$N")
+	#println("lmax=$lmax")
+	#error("stop")
+
+	X=zeros(n,m)
+	rold=1.0
+	for i in 1:its
+		X=\(C,B-N*X)
+
+		R=B-A*X
+		rnew=(norm(R)/norm(B))
+		println(i,"  ",rnew,"    ",rnew/rold)
+		rold=rnew
+	end
+
+	return X
+end
