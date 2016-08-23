@@ -1,3 +1,5 @@
 flags=-fpp -mkl -traceback #-check all
 all:	
 	ifort ../feast_gmres.f90 iterative_feast.f90 time_sddriver.f90 ../../myFeast3.0/lib/x64/libfeast.a ../../myFeast3.0/lib/x64/libfeast_sparse.a $(flags) -o ../../bin/time_sddriver
+	ifort ../feast_gmres.f90 iterative_feast.f90 time_sdSVDdriver.f90 ../../myFeast3.0/lib/x64/libfeast.a ../../myFeast3.0/lib/x64/libfeast_sparse.a $(flags) -o ../../bin/time_sdSVDdriver
+	ifort ../feast_gmres.f90 iterative_feast.f90 lapack_ddSVDdriver.f90 ../../myFeast3.0/lib/x64/libfeast.a ../../myFeast3.0/lib/x64/libfeast_sparse.a $(flags) -o ../../bin/lapack_ddSVDdriver

@@ -1064,7 +1064,7 @@ implicit none
         error=errorlist(m)!errorlist(neigs)!(m)
         errorprint=errorlist(neigs)
 
-        print *,error
+        !print *,error
 
         if(error<eps) exit !if error is low enough, end loop
 
