@@ -158,7 +158,11 @@ subroutine dfeast_scsrgvxit(UPLO,N,sa,isa,jsa,sb,isb,jsb,fpm,epsout,loop,Emin,Em
     integer :: nfact,id
     integer :: rank,code,nb_procs,NEW_COMM_WORLD
 !!!!! csr-upper format
-    double precision,dimension(:),pointer :: ssa,ssb
+double precision,dimension(:),pointer :: ssa,ssb,nres
+double precision :: ares
+logical :: comb
+integer :: infob,itmax
+
     integer,dimension(:), pointer :: sisa,sjsa,sisb,sjsb
     integer :: opt,nnza,nnzb,nnz
 !!!!!for pardiso
@@ -174,6 +178,8 @@ subroutine dfeast_scsrgvxit(UPLO,N,sa,isa,jsa,sb,isb,jsb,fpm,epsout,loop,Emin,Em
     complex(kind=(kind(1.0d0))),dimension(:),pointer :: zsa
     integer :: linresindex !number of RHS to use in measuring linear system error
     double precision :: lintargeterror,linsyserror !goal error for linear system, return linear system error
+
+    integer :: k
 
     rank=0
     nb_procs=1
@@ -364,6 +370,8 @@ subroutine dfeast_scsrgvxit(UPLO,N,sa,isa,jsa,sb,isb,jsb,fpm,epsout,loop,Emin,Em
         call wallocate_1z(zsa,nnza,infoloc)
         call wallocate_2z(ztempmat,n,m0,infoloc)
         zsa=(1.0d0,0.0d0)*sa(1:nnza)
+
+call wallocate_1d(nres,M0,infoloc) ! dummy
     end if
 
     ijob=-1 ! initialization 
@@ -436,8 +444,29 @@ subroutine dfeast_scsrgvxit(UPLO,N,sa,isa,jsa,sb,isb,jsb,fpm,epsout,loop,Emin,Em
               endif
 
               !if (loop<3) linresindex=m0
-              
+              if(fpm(11)==2) then !block CGLS
               call zfeast_cglsRes(UPLO,n,m0,zsa,isa,jsa,ze2,nnza,workc,ztempmat,fpm(50),lintargeterror,linresindex,linsyserror) 
+              end if
+
+              if(fpm(11)==3) then !single vector BICGSTAB
+                zsa(1:nnz)=-(1.0d0,0.0d0)*sa(1:nnz)
+                do  i=1,n
+                do k=isa(i),isa(i+1)-1
+                if (jsa(k)==i) zsa(k)=zsa(k)+Ze2
+                enddo
+                enddo
+
+                do i=1,m0
+                !call zfeast_BiCGSTABRes(UPLO,n,zsa,isa,jsa,ze2,nnza,workc(:,i),ztempmat(:,i),fpm(50),lintargeterror,linresindex,linsyserror) 
+                end do
+
+                ztempmat(1:N,1:M0)=(0.0d0,0.0d0)
+                 comb=.true.
+                 itmax=fpm(50)
+                 call zbicgstab(UPLO,N,zsa,isa,jsa,M0,workc,ztempmat,nres,ares,itmax,lintargeterror,comb,infob) 
+                    print *,'lin sys error=',ares
+                    print *,'lin sys it = ',itmax
+              end if
 
               workc=ztempmat
         end if

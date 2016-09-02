@@ -120,9 +120,15 @@ call random_number(dB)
 
 B=(1.0d0,0.0d0)*dB
 
-ze=(1.0d0,0.0d0)
+ze=(0.0d0,0.0d0)
 
-call zfeast_cgls(UPLO,n,m0,dsa,isa,jsa,ze,nnza,B,X,100 )
+!call zfeast_cgls(UPLO,n,m0,dsa,isa,jsa,ze,nnza,B,X,100 )
+
+print *,'starting arnoldi'
+
+call blockGMRESarnoldi(UPLO,n,m0,dsa,isa,jsa,30,3,B,X,1.0d-6)
+
+print *,'arnoldi done'
 
 !test convergence
 
@@ -131,14 +137,15 @@ if(UPLO=='F') then
 else
     matdescra(1)='H'
 end if
-!matdescra(1)='H'
+!matdescra(1)='G'
 matdescra(2)=UPLO
 matdescra(3)='N'
 matdescra(4)='F'
 
-temp1=X
-call mkl_zcsrmm('N', n, m0, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), X, n, ze, temp1, n)
-R=B-temp1
+!temp1=X
+R=B
+call mkl_zcsrmm('N', n, m0, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), X, n, (1.0d0,0.0d0), R, n)
+!R=B-temp1
 
 error=0.0d0
 do i=1,m0

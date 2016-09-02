@@ -88,6 +88,258 @@ end subroutine quicksort
 
 
 
+subroutine blockGMRESarnoldi(UPLO,n,m,dsa,isa,jsa,kmax,restarts,Brhs,Xlhs,eps)
+implicit none
+
+character :: UPLO
+integer :: n,m,kmax,restarts
+integer, dimension(*) :: isa,jsa
+complex (kind=kind(0.0d0)), dimension(*) :: dsa
+complex (kind=kind(0.0d0)), dimension(n,m) :: Brhs,Xlhs
+double precision :: eps !target residual error
+
+!!!!Arnoldi stuff
+complex (kind=kind(0.0d0)), dimension(:,:),allocatable :: V,H,Bsm,ym,Htmp,R,R2,Xtmp
+
+!!!BLAS and lapack:
+character, dimension(6) :: matdescra
+integer :: lwork,info
+complex (kind=kind(0.0d0)), dimension(:),allocatable :: work
+double precision, external :: dznrm2
+
+double precision :: error,error2
+
+integer :: i,j,jmax,l
+
+allocate(V(n,(kmax+1)*m),H(1:(kmax+1)*m,1:kmax*m), Htmp((kmax+1)*m,kmax*m)  ,Bsm((kmax+1)*m,m), ym((kmax+1)*m,m), R(1:n,1:m), R2(1:n,1:m), Xtmp(1:n,1:m) )
+
+
+
+lwork=m*(kmax+1)*m*2
+allocate(work(lwork))
+
+if(UPLO=='F') then
+    matdescra(1)='G'
+else
+    matdescra(1)='H'
+end if
+!matdescra(1)='G'
+matdescra(2)=UPLO
+matdescra(3)='N'
+matdescra(4)='F'
+
+R=Brhs
+Xlhs=(0.0d0,0.0d0)
+
+
+do i=1,restarts
+
+    if(i>1) then
+        !R=Brhs-A*Xlhs
+        R=Brhs(1:n,1:m)
+        call mkl_zcsrmm('N', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), Xlhs(1,1), n, (1.0d0,0.0d0), R(1,1), n)
+    end if
+
+    V(1:n,1:m)=R(1:n,1:m)
+
+    do j=1,kmax
+
+        !next arnoldi step
+        call blockArnoldiIt(UPLO,n,m,dsa,isa,jsa,kmax,j,V,H,Bsm)
+
+        !solve system H(1:(j+1)*m,1:j*m)ym=Bsm(1:(j+1)*m,1:m)
+        ym(1:(j+1)*m,1:m)=Bsm(1:(j+1)*m,1:m)
+        Htmp(1:(j+1)*m,1:j*m)=H(1:(j+1)*m,1:j*m)
+        call zgels('N',(j+1)*m,j*m,m,Htmp(1:(j+1)*m,1:j*m),(j+1)*m,ym(1:(j+1)*m,1:m),(j+1)*m,work,lwork,info)
+        if(info .ne. 0) then
+            print *,'Error in blockGMRESarnoldi'
+            print *,'ZGELS error ',info
+            stop
+        end if
+
+        !measure residual:
+        !error=norm(R-V[1:n,1:(j+1)*m]*H[1:(j+1)*m,1:j*m]*ym)/norm(Brhs)
+        R2=R
+        call zgemm('N','N',(j+1)*m,m,j*m,(1.0d0,0.0d0),H(1:(j+1)*m,1:j*m),(j+1)*m,ym(1:j*m,1:m),j*m,(0.0d0,0.0d0),Htmp(1:(j+1)*m,1:m),(j+1)*m)
+        call zgemm('N','N',n,m,(j+1)*m,(-1.0d0,0.0d0),V(1:n,1:(j+1)*m),n,Htmp(1:(j+1)*m,1:m),(j+1)*m,(1.0d0,0.0d0),R2(1:n,1:m),n)
+
+        !Xtmp=Xlhs(1:n,1:m)
+        !call zgemm('N','N',n,m,j*m,(1.0d0,0.0d0),V(1:n,1:j*m),n,ym(1:j*m,1:m),j*m,(1.0d0,0.0d0),Xtmp(1:n,1:m),n)
+        !R2=Brhs(1:n,1:m)
+        !call mkl_zcsrmm('N', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), Xtmp(1,1), n, (1.0d0,0.0d0), R2(1,1), n)
+
+        error=0.0d0
+        do l=1,m
+            error2=dznrm2(n,R2(:,l),1)/dznrm2(n,Brhs(:,l),1)
+            if (error2>error) error=error2
+        end do
+
+        print *,'GMRES arnoldi ',i,error
+
+        jmax=j
+        if(error<eps) then 
+            !Xlhs(1:n,1:m)=Xtmp
+            !return
+            exit
+        end if
+    end do
+
+    !update solution
+    !Xlhs=Xlhs+V[1:n,1:j*m]*ym
+    j=jmax
+    call zgemm('N','N',n,m,j*m,(1.0d0,0.0d0),V(1:n,1:j*m),n,ym(1:j*m,1:m),j*m,(1.0d0,0.0d0),Xlhs(1:n,1:m),n)
+
+    if(error<eps) then 
+        exit
+    end if
+end do
+
+
+    Xtmp=Xlhs(1:n,1:m)
+    !call zgemm('N','N',n,m,j*m,(1.0d0,0.0d0),V(1:n,1:j*m),n,ym(1:j*m,1:m),j*m,(1.0d0,0.0d0),Xtmp(1:n,1:m),n)
+    R2=Brhs(1:n,1:m)
+    call mkl_zcsrmm('N', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), Xtmp(1,1), n, (1.0d0,0.0d0), R2(1,1), n)
+
+    error=0.0d0
+    do l=1,m
+        error2=dznrm2(n,R2(:,l),1)/dznrm2(n,Brhs(:,l),1)
+        if (error2>error) error=error2
+    end do
+
+    print *,'Final error=',error
+
+deallocate(V,H, Htmp  ,Bsm, ym, R, R2 )
+
+end subroutine blockGMRESarnoldi
+
+
+
+subroutine blockArnoldiIt(UPLO,n,m,dsa,isa,jsa,k,k0,V,H,Bsm)
+implicit none
+
+character :: UPLO
+integer :: n,m,k,k0
+integer, dimension(*) :: isa,jsa
+complex (kind=kind(0.0d0)), dimension(*) :: dsa
+complex (kind=kind(0.0d0)), dimension(n,*) :: V
+complex (kind=kind(0.0d0)), dimension((k+1)*m,*) ::H,Bsm
+
+integer :: nnza
+
+complex (kind=kind(0.0d0)), dimension(:,:), allocatable :: Hnew,Vnew
+
+!!!BLAS and lapack:
+character, dimension(6) :: matdescra
+!!lapack stuff:
+complex (kind=kind(0.0d0)), dimension(:), allocatable :: work,qrtau
+integer :: lwork,info
+integer, dimension(:),pointer :: ipiv
+
+integer :: j
+
+nnza=isa(n+1)+1
+
+allocate(Vnew(n,m),Hnew(m,m))
+lwork=3*n
+allocate(work(lwork),qrtau(m))
+
+if(UPLO=='F') then
+    matdescra(1)='G'
+else
+    matdescra(1)='H'
+end if
+!matdescra(1)='G'
+matdescra(2)=UPLO
+matdescra(3)='N'
+matdescra(4)='F'
+
+if(k0==1) then !initialize everything
+    H(1:(k+1)*m,1:k*m)=(0.0d0,0.0d0)    
+    Bsm(1:(k+1)*m,1:m)=(0.0d0,0.0d0)
+    
+    !QR=V
+    !Bsm(1:m,1:m)=R(1:m,1:m)
+    !V(:,1:m)=Q
+
+    !get QR factorization
+    call ZGEQRF( n, m, V(:,1:m), n, qrtau, work, lwork, info )
+    if (info .ne. 0) then
+        print *,'Problem with least squares solution in blockArnoldiIt'
+        print *,'ZGEQRF error info = ',info
+        stop
+    end if
+
+    !put R matrix into H:
+    Bsm(1:m,1:m)=V(1:m,1:m)
+
+    !put Q matrix into V:
+    call ZUNGQR(  n, m, m, V(:,1:m), n, qrtau, work, lwork, info )
+    if (info .ne. 0) then
+        print *,'Problem with least squares solution in ArnoldiIt'
+        print *,'ZUNGQR error info = ',info
+        stop
+    end if
+
+end if
+
+
+!Do matrix multiply:
+
+!Vnew=A*V0(:,(i-1)*m+1:i*m)
+call mkl_zcsrmm('N', n, m, n, (1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), V(:,(k0-1)*m+1:k0*m), n, (0.0d0,0.0d0), Vnew, n)
+
+
+do j=1,k0 !Orthogonalize with respect to previous basis vectors:
+    !Hnew=V(:,(j-1)*m+1:j*m)'*Vnew
+    call zgemm('C','N',m,m,n,(1.0d0,0.0d0),V(1:n,(j-1)*m+1:j*m),n,Vnew,n,(0.0d0,0.0d0),Hnew,m)
+
+    !H((j-1)*m+1:j*m,(k0-1)*m+1:k0*m)=Hnew
+    H((j-1)*m+1:j*m,(k0-1)*m+1:k0*m)=Hnew
+    !Vnew=Vnew-V(:,(j-1)*m+1:j*m)*Hnew
+
+    call zgemm('N','N',n,m,m,(-1.0d0,0.0d0),V(:,(j-1)*m+1:j*m),n,Hnew,m,(1.0d0,0.0d0),Vnew,n)
+
+end do
+
+
+!Use QR to orthonormalize new vectors:
+
+!get QR factorization
+call ZGEQRF( n, m, Vnew, n, qrtau, work, lwork, info )
+if (info .ne. 0) then
+    print *,'Problem with least squares solution in blockArnoldiIt'
+    print *,'ZGEQRF error info = ',info
+    stop
+end if
+
+!put R matrix into H:
+H(k0*m+1:(k0+1)*m,(k0-1)*m+1:k0*m)=Vnew(1:m,1:m)
+
+!put Q matrix into V:
+call ZUNGQR(  n, m, m, Vnew, n, qrtau, work, lwork, info )
+if (info .ne. 0) then
+    print *,'Problem with least squares solution in ArnoldiIt'
+    print *,'ZUNGQR error info = ',info
+    stop
+end if
+
+V(:,k0*m+1:(k0+1)*m)=Vnew
+
+!V(:,k0*m+1:(k0+1)*m)=Q
+!H(k0*m+1:(k0+1)*m,(k0-1)*m+1:k0*m)=R(1:m,1:m)
+deallocate(Vnew,Hnew)
+deallocate(work,qrtau)
+
+end subroutine blockArnoldiIt
+
+
+
+
+
+
+
+
+
 subroutine dfeast_gmres(ijob,stateVars,Brhs,x,V,Av,Ax,ze,n,m,restarts,m0,xwork,workin,Av2)
 implicit none
     include 'f90_noruntime_interface.fi'
@@ -942,6 +1194,456 @@ call zlacpy('F',n,m,x(1,1),n,Brhs(1,1),n)
 !stop
 end subroutine zfeast_gmres_norm
 
+
+
+
+subroutine zfeast_BiCGSTABRes(UPLO,n,dsa,isa,jsa,ze,nnza,B,X,maxit,eps,neigs,error)
+implicit none
+!A=Az=(ze*I-A) in this routine
+
+    integer :: n,maxit,neigs
+    complex (kind=kind(0.0d0)) :: ze
+    double precision :: eps,error  !target error, output error
+    character :: UPLO
+
+    !!!!!!!!!!!!!!!!!!!!!!!!  Sparse matrix:
+    complex (kind=kind(0.0d0)),dimension(*) :: dsa
+    integer,dimension(*) :: isa,jsa
+    integer :: nnza
+
+    !!! RHS, solution
+    complex (kind=kind(0.0d0)), dimension(n) :: B,X
+
+    !!! CG stuff
+    integer :: m
+    complex (kind=kind(0.0d0)), dimension(:), allocatable :: R,Rnew,P,Rstar,S,tv1,tv2
+    complex (kind=kind(0.0d0)) :: tz1,tz2,alpha,beta,omega
+    
+    !!!BLAS and lapack:
+    character, dimension(6) :: matdescra
+    
+    integer :: i,j,debug,its
+    double precision :: dtemp
+    double precision, external :: dznrm2
+    complex (kind=kind(0.0d0)) :: zdotc
+    double precision :: errorprint
+
+    m=1
+
+    !if (m<neigs) then
+    !    print *,'zfeast_bicgstabRes error: neigs > m',neigs,m
+    !    stop
+    !endif
+
+    
+    debug=0
+
+    if(UPLO=='F') then
+        matdescra(1)='G'
+    else
+        matdescra(1)='H'
+    end if
+    matdescra(2)=UPLO
+    matdescra(3)='N'
+    matdescra(4)='F'
+
+    !all this allocating is probably slow; maybe have user allocate once and for all?
+    allocate(R(n),Rnew(n),Rstar(n),P(n),tv1(n),tv2(n),S(n))
+
+    !X=0.0
+    X(1:n)=0.0d0
+
+    R=B(1:n)
+    !call mkl_zcsrmm('C', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), B, n, (1.0d0,0.0d0)*conjg(ze), R, n)
+
+    P=R
+    Rstar=R
+
+    its=0
+
+    do i=1,maxit
+        its=its+1
+        
+        !alpha=r'*rstar/(rstar'*A*p)
+
+        !----tv1=A*p
+        tv1=P
+        call mkl_zcsrmm('N', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), P, n, ze, tv1, n)
+        !----tz1=rstar'*tv1
+        tz1=zdotc(n,tv1,1,Rstar,1)
+        !----tz2=r'*rstar
+        tz2=zdotc(n,R,1,Rstar,1)
+        !----alpha=tz2/tz1
+        alpha=tz2/tz1
+
+        !S=R-alpha*A*P
+        S=R-alpha*tv1
+
+        !omega=(A*S)'*S/([A*S]'*[A*S])
+        
+        !----tv2=A*S
+        tv2=S
+        call mkl_zcsrmm('N', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), S, n, ze, tv2, n)
+        !----tz1=tv2'*S
+        tz1=zdotc(n,tv2,1,S,1)
+        !----tz2=tv2'*tv2
+        tz2=zdotc(n,tv2,1,tv2,1)
+        !----omega=tz1/tz2
+        omega=tz1/tz2
+
+        X=X+alpha*P+omega*S
+
+        !Rnew=S-omega*A*S
+        Rnew=S-omega*tv2
+
+        !beta=(rnew'*rstar)/(r'*rstar) * alpha/omega
+        !----tz1=rnew'*rstar
+        tz1=zdotc(n,Rnew,1,Rstar,1)
+        !----tz2=R'*Rstar
+        tz2=zdotc(n,R,1,Rstar,1)
+        !----beta=(tz1/tz2)*(alpha/omega)
+        beta=(tz1/tz2)*(alpha/omega)
+
+        !P=Rnew+beta*(p-omega*A*P)
+        P=Rnew+beta*(p-omega*tv1)
+
+        R=Rnew
+
+        !measure residual
+        error=dznrm2(n,R(:),1)/dznrm2(n,B(:),1)
+
+        if(error<eps) exit !if error is low enough, end loop
+
+    end do  
+    
+    print *,'   linits=',its
+    print *,'      errors=',error
+    print *,'beta = ',beta
+    deallocate(R,Rnew,Rstar,P,tv1,tv2,S)
+
+end subroutine zfeast_BiCGSTABRes
+
+
+
+  subroutine  zbicgstab(UPLO,N,saz,isa,jsa,M0,fj,xj,res,ares,nbit_out,epso,comd,info) 
+    implicit none
+    character(len=1) :: UPLO
+    integer :: N,M0
+    complex(kind=kind(1.0d0)),dimension(*) :: saz
+    integer,dimension(*) :: isa,jsa
+
+    complex(kind=kind(1.0d0)), dimension(N,*) :: fj
+    complex(kind=kind(1.0d0)), dimension(N,*):: xj
+    double precision, dimension(M0) :: res
+    integer :: info
+    integer :: nbit_out
+    double precision ::epso
+    double precision ::ares
+    logical :: comd
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
+
+    integer :: rank,nbit_out0
+    integer :: p,k
+    integer :: s,sizeAj,i,etiquette
+    integer :: tca,tcb,tc1,tc2,tim
+    logical :: fail,loop,half
+    character(len=1) :: ASTRU,AFAC
+    complex(kind=kind(1.0d0)) :: zdotc
+    complex(kind=kind(1.0d0)), dimension(:,:),allocatable :: rb,pp,pb,v,ss,sb,t,rj
+    complex(kind=kind(1.0d0)),dimension(:),allocatable ::rho_1,prho_1,pbeta,palpha,pomega,prho_2,aux0,paux0,aux1,paux1
+    double precision,dimension(:),allocatable :: resf,nss
+
+    complex(kind=kind(1.0d0)) :: ONEC,ZEROC
+
+    character, dimension(6) :: matdescra
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
+    ONEC=(1.0d0,0.0d0)
+    ZEROC=(0.0d0,0.0d0)
+
+if(UPLO=='F') then
+        matdescra(1)='G'
+    else
+        matdescra(1)='H'
+    end if
+    matdescra(2)=UPLO
+    matdescra(3)='N'
+    matdescra(4)='F'
+
+
+rank=0
+
+
+    ! Remove Fortran runtime dependency
+    allocate(rj(N,M0))
+    allocate(rb(N,M0))
+    allocate(pp(N,M0))
+    allocate(pb(N,M0))
+    allocate(v(N,M0))
+    allocate(ss(N,M0))
+    allocate(sb(N,M0))
+    allocate(t(N,M0))
+    allocate(rho_1(M0))
+    allocate(prho_1(M0))
+    allocate(prho_2(M0))
+    allocate(pbeta(M0))
+    allocate(palpha(M0))
+    allocate(pomega(M0))
+    allocate(aux0(M0))
+    allocate(paux0(M0))
+    allocate(aux1(M0))
+    allocate(paux1(M0))
+    allocate(nss(M0))
+    allocate(resf(M0))
+!!!!!!!!!!!!!
+
+
+    s=M0
+    sizeAj=N
+
+    info=0
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Initial rj,xj,res and resf !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+!!!!!!!!!!!!!!!! SOLVE M*xj=fj ==> xj
+!    call ZCOPY(sizeAj*s,fj(1,1),1,xj(1,1),1)   
+ !!   call zSOLVER_for_BICGSTAB(pre,xj,info)
+
+
+      
+!!!!!!!!!!!!!!! MATVEC for the initial residual r=f-Ax
+    call ZCOPY(sizeAj*s,fj(1,1),1,rj(1,1),1)
+
+!    call zMATVEC_for_BICGSTAB(-ONEC,mat,xj,ONEC,rj)
+! call zcsrmm(UPLO,'N',N,N,M0,-ONEC,saz,isa,jsa,xj,(1.0d0,0.0d0),rj)
+call mkl_zcsrmm('N', n, M0, n, -ONEC, matdescra, saz, jsa, isa, isa(2), xj, n, (1.0d0,0.0d0), rj, n)
+
+!!!
+    do i=1,s
+       res(i)=maxval(abs(rj(1:N,i)))
+       resf(i)=maxval(abs(fj(1:N,i))) ! cte all along
+    enddo
+    ares=maxval(res/resf)
+    if (comd) print *,'rel. residual before iteration',ares
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!! BIPCG-STAB 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    if ((comd).and.(rank==0)) then
+       tca=0
+       tcb=0
+    end if
+
+!!!!!!!!!! choose rb
+    call ZCOPY(sizeAj*s,rj(1,1),1,rb(1,1),1)
+
+    nbit_out0=0
+    k=0
+    fail=.false.
+    loop=.true.
+
+    !loop=.false.
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!111
+    if (.not.((nbit_out0<=nbit_out).and.(ares.gt.epso).and.(fail.eqv..false.))) loop=.false. 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!111
+
+    Do While (loop) 
+       k=k+1
+       nbit_out0=k
+       if (k>1) prho_2=prho_1 
+
+!!!!!!!!!!! SCALAR PRODUCT on different RHS
+       do i=1,s
+          rho_1(i)=zdotc(sizeAj,rb(1,i),1,rj(1,i),1)
+       end do
+       prho_1=rho_1
+!!!!!!!!!!!! TEST
+       do i=1,s
+          if (prho_1(i)==ZEROC) then
+             info= -201
+             if ((comd).and.(rank==0)) print*,'ATTENTION ----- BICG-STAB OUT FAILED, prho_1=0 !!'
+             return 
+             fail=.true.
+          end if
+       end do
+
+!!!!!!!!!!!! CONDITION
+       IF (k==1) THEN
+          call ZCOPY(sizeAj*s,rj(1,1),1,pp(1,1),1)
+       ELSE
+          pbeta=(prho_1/prho_2)*(palpha/pomega)
+          do i=1,s
+             call ZAXPY(sizeAj,-pomega(i),v(1,i),1,pp(1,i),1)
+             call ZSCAL(sizeAj,pbeta(i),pp(1,i),1)
+             call ZAXPY(sizeAj,ONEC,rj(1,i),1,pp(1,i),1)
+             !      pp(:,i)=r(:,i)+pbeta(i)*(pp(:,i)-pomega(i)*v(:,i)) ! by processor
+          end do
+       END IF
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!! SOLVE
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+       !! solve the spike M*pb=pp(k) ---> pb
+       call ZCOPY(sizeAj*s,pp(1,1),1,pb(1,1),1)
+       if (comd) call system_clock(tc1,tim) 
+       !call zSOLVER_for_BICGSTAB(pre,pb,info)
+
+       if (info/=0) return 
+       if (comd) then
+          call system_clock(tc2,tim)
+          tcb=tcb+tc2-tc1
+       end if
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!! MAT-VEC A by pb, results in v(k)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+       !v=ZERO
+       if (comd) call system_clock(tc1,tim)
+       !call zMATVEC_for_BICGSTAB(ONEC,mat,pb,ZEROC,v)
+       !call zcsrmm(UPLO,'N',N,N,M0,ONEC,saz,isa,jsa,pb,(0.0d0,0.0d0),v)
+call mkl_zcsrmm('N', n, M0, n, ONEC, matdescra, saz, jsa, isa, isa(2), pb, n, (0.0d0,0.0d0), v, n)
+
+
+       if (comd) then
+          call system_clock(tc2,tim)
+          tca=tca+tc2-tc1
+       end if
+
+!!!!!! SCALAR PRODUCT on different RHS
+       do i=1,s!! different RHS
+          aux0(i)=zdotc(sizeAj,rb(1,i),1,v(1,i),1)
+       end do
+       paux0=aux0
+!!!!!!
+       palpha=prho_1/paux0
+       do i=1,s
+          !ss(:,i)=r(:,i)-palpha(i)*v(:,i) ! by processors
+          call ZCOPY(sizeAj,rj(1,i),1,ss(1,i),1)
+          call ZAXPY(sizeAj,-palpha(i),v(1,i),1,ss(1,i),1) 
+       end do
+
+!!!! CHECK THE  NORM Loo of ss
+!!! call pvnorm_Loo(nss,ss,p,nbpart,pm%new_comm_world)
+       do i=1,s
+          nss(i)=maxval(abs(ss(1:N,i)))
+       enddo
+
+       half=.false.
+       ares=maxval(nss/resf)
+       if (ares<epso) half=.true. !
+
+       IF (half) then
+          do i=1,s
+             !      xj(:,i)=xj(:,i)+palpha(i)*pb(:,i) 
+             call ZAXPY(sizeAj,palpha(i),pb(1,i),1,xj(1,i),1) 
+          end do
+          res=nss
+          if ((comd).and.(rank==0)) print *,(k-1)*1.0d0+0.5d0,ares
+
+
+       ELSE
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!11
+!!!!!!!!!!!! SOLVE
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+          ! solve the spike M*sb=ss ---> sb
+          call ZCOPY(sizeAj*s,ss(1,1),1,sb(1,1),1)
+          if (comd) call system_clock(tc1,tim)
+          !call zSOLVER_for_BICGSTAB(pre,sb,info)
+
+          if (info/=0) return 
+
+          if (comd) then
+             call system_clock(tc2,tim)
+             tcb=tcb+tc2-tc1
+          end if
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!! MAT-VEC A by sb, results in t
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+          !t=ZERO
+          if (comd) call system_clock(tc1,tim)
+          !call zMATVEC_for_BICGSTAB(ONEC,mat,sb,ZEROC,t)
+          !call zcsrmm(UPLO,'N',N,N,M0,ONEC,saz,isa,jsa,sb,(0.0d0,0.0d0),t)
+          call mkl_zcsrmm('N', n, M0, n, ONEC, matdescra, saz, jsa, isa, isa(2), sb, n, (0.0d0,0.0d0), rj, n)
+
+
+          if (comd) then
+             call system_clock(tc2,tim)
+             tca=tca+tc2-tc1
+          end if
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!! SCALAR PRODUCTS on different RHS
+          do i=1,s!! different RHS
+             aux0(i)=zdotc(sizeAj,t(1,i),1,ss(1,i),1)
+             aux1(i)=zdotc(sizeAj,t(1,i),1,t(1,i),1)
+          end do
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+          paux0=aux0
+          paux1=aux1
+!!!!!!
+          pomega=paux0/paux1
+          do i=1,s
+             if (pomega(i)==ZEROC) then
+		info= -202 
+                if ((comd).and.(rank==0)) print *,'ATTENTION ----- BICG-STAB OUT FAILED, pomega=0'
+		return 
+                fail=.true.
+             end if
+          end do
+
+          do i=1,s
+             ! xj(:,i)=xj(:,i)+palpha(i)*pb(:,i)+pomega(i)*sb(:,i)
+             call ZAXPY(sizeAj,palpha(i),pb(1,i),1,xj(1,i),1) 
+             call ZAXPY(sizeAj,pomega(i),sb(1,i),1,xj(1,i),1) 
+          end do
+
+          do i=1,s
+             !   r(:,i)=ss(:,i)-pomega(i)*t(:,i)
+             call ZCOPY(sizeAj,ss(1,i),1,rj(1,i),1)
+             call ZAXPY(sizeAj,-pomega(i),t(1,i),1,rj(1,i),1) 
+          end do
+
+!!!! NORM Loo RESIDUAL (||r||oo)
+!!! call pvnorm_Loo(res,rj,p,nbpart,pm%new_comm_world)
+          do i=1,s
+             res(i)=maxval(abs(rj(1:N,i)))
+          enddo
+
+          ares=maxval(res/resf)
+          if ((comd).and.(rank==0)) print *,k,ares
+
+       END IF
+
+
+
+!!!! test for the other loop
+       if (.not.((nbit_out0<=nbit_out).and.(ares.gt.epso).and.(fail.eqv..false.))) loop=.false. 
+
+
+    end Do
+
+
+
+    if ((comd).and.(rank==0)) then
+       print *,'TIME postprocess MATMUL ',tca*1.0d0/tim
+       print *,'TIME postprocess SOLVE ',tcb*1.0d0/tim
+       print *,''
+    end if
+
+
+    nbit_out=nbit_out0
+
+
+    deallocate(rj,rb,pp,pb,v,ss,sb,t)
+    deallocate(nss,rho_1,prho_1,pbeta,palpha,pomega,prho_2,aux0,paux0,aux1,paux1,resf)
+
+  end subroutine zbicgstab
 
 
 subroutine zfeast_cglsRes(UPLO,n,m,dsa,isa,jsa,ze,nnza,B,X,maxit,eps,neigs,error)
