@@ -168,13 +168,15 @@ do i=1,restarts
         !R2=Brhs(1:n,1:m)
         !call mkl_zcsrmm('N', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), Xtmp(1,1), n, (1.0d0,0.0d0), R2(1,1), n)
 
+        print *,i,j
         error=0.0d0
         do l=1,m
             error2=dznrm2(n,R2(:,l),1)/dznrm2(n,Brhs(:,l),1)
             if (error2>error) error=error2
+            print *,'    ',error2
         end do
 
-        print *,'GMRES arnoldi ',i,error
+        !print *,i,j,error
 
         jmax=j
         if(error<eps) then 
@@ -183,6 +185,8 @@ do i=1,restarts
             exit
         end if
     end do
+
+    R=R2
 
     !update solution
     !Xlhs=Xlhs+V[1:n,1:j*m]*ym
@@ -262,7 +266,7 @@ if(k0==1) then !initialize everything
     !V(:,1:m)=Q
 
     !get QR factorization
-    call ZGEQRF( n, m, V(:,1:m), n, qrtau, work, lwork, info )
+    call ZGEQRF( n, m, V(1:n,1:m), n, qrtau, work, lwork, info )
     if (info .ne. 0) then
         print *,'Problem with least squares solution in blockArnoldiIt'
         print *,'ZGEQRF error info = ',info
@@ -273,7 +277,7 @@ if(k0==1) then !initialize everything
     Bsm(1:m,1:m)=V(1:m,1:m)
 
     !put Q matrix into V:
-    call ZUNGQR(  n, m, m, V(:,1:m), n, qrtau, work, lwork, info )
+    call ZUNGQR(  n, m, m, V(1:n,1:m), n, qrtau, work, lwork, info )
     if (info .ne. 0) then
         print *,'Problem with least squares solution in ArnoldiIt'
         print *,'ZUNGQR error info = ',info
@@ -286,7 +290,7 @@ end if
 !Do matrix multiply:
 
 !Vnew=A*V0(:,(i-1)*m+1:i*m)
-call mkl_zcsrmm('N', n, m, n, (1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), V(:,(k0-1)*m+1:k0*m), n, (0.0d0,0.0d0), Vnew, n)
+call mkl_zcsrmm('N', n, m, n, (1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), V(1:n,(k0-1)*m+1:k0*m), n, (0.0d0,0.0d0), Vnew, n)
 
 
 do j=1,k0 !Orthogonalize with respect to previous basis vectors:

@@ -29,7 +29,7 @@ double precision :: emin,emax
 !!!!!!!!!!!!!!!!!!!!!!! linear system
 
 double precision, dimension(:,:), allocatable :: dB
-complex (kind=kind(0.0d0)),dimension(:,:), allocatable :: B,X,R,temp1
+complex (kind=kind(0.0d0)),dimension(:,:), allocatable :: B,X,R,temp1,Bs
 integer :: nrhs
 complex (kind=kind(0.0d0)) :: ze
 
@@ -111,26 +111,7 @@ end if
 !random rhs
 nrhs=m0
 
-allocate(dB(n,m0),B(n,m0),X(n,m0),R(n,m0),temp1(n,m0))
-
-call random_number(dB)
-!dB=0.0d0
-!dB(1,1)=1.0
-!dB(2,1)=2.5
-
-B=(1.0d0,0.0d0)*dB
-
-ze=(0.0d0,0.0d0)
-
-!call zfeast_cgls(UPLO,n,m0,dsa,isa,jsa,ze,nnza,B,X,100 )
-
-print *,'starting arnoldi'
-
-call blockGMRESarnoldi(UPLO,n,m0,dsa,isa,jsa,30,3,B,X,1.0d-6)
-
-print *,'arnoldi done'
-
-!test convergence
+allocate(dB(n,m0),B(n,m0),X(n,m0),R(n,m0),temp1(n,m0),Bs(n,m0))
 
 if(UPLO=='F') then
     matdescra(1)='G'
@@ -141,6 +122,40 @@ end if
 matdescra(2)=UPLO
 matdescra(3)='N'
 matdescra(4)='F'
+
+Bs=(0.0d0,0.0d0)
+Bs(1,1)=(1.0d0,0.0d0)
+Bs(2,1)=(2.0d0,0.0d0)
+Bs(3,1)=(3.0d0,0.0d0)
+Bs(4,1)=(4.0d0,0.0d0)
+if(m0>1) then
+Bs(5,2)=(1.0d0,0.0d0)
+Bs(6,2)=(2.0d0,0.0d0)
+Bs(7,2)=(3.0d0,0.0d0)
+Bs(8,2)=(4.0d0,0.0d0)
+end if
+call mkl_zcsrmm('N', n, m0, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), Bs, n, (0.0d0,0.0d0), B, n)
+
+!call random_number(dB)
+!dB=0.0d0
+!dB(1,1)=1.0
+!dB(2,1)=2.5
+
+!B=(1.0d0,0.0d0)*dB
+
+ze=(0.0d0,0.0d0)
+
+!call zfeast_cgls(UPLO,n,m0,dsa,isa,jsa,ze,nnza,B,X,100 )
+
+print *,'starting arnoldi'
+
+call blockGMRESarnoldi(UPLO,n,m0,dsa,isa,jsa,100,1,B,X,1.0d-16)
+
+print *,'Sol=',X(1,1)
+
+print *,'arnoldi done'
+
+!test convergence
 
 !temp1=X
 R=B
