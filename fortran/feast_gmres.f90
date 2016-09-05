@@ -150,12 +150,62 @@ do i=1,restarts
         !solve system H(1:(j+1)*m,1:j*m)ym=Bsm(1:(j+1)*m,1:m)
         ym(1:(j+1)*m,1:m)=Bsm(1:(j+1)*m,1:m)
         Htmp(1:(j+1)*m,1:j*m)=H(1:(j+1)*m,1:j*m)
+
+        !print *,'H=',Htmp(1,2)
+        !print *,'Bsm=',sum(Bsm)
+        !print *,'V=',sum(V)
+
         call zgels('N',(j+1)*m,j*m,m,Htmp(1:(j+1)*m,1:j*m),(j+1)*m,ym(1:(j+1)*m,1:m),(j+1)*m,work,lwork,info)
         if(info .ne. 0) then
             print *,'Error in blockGMRESarnoldi'
             print *,'ZGELS error ',info
             stop
         end if
+
+        !print *,'Ym=',ym(1,1)
+
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        !use QR explicitly
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+            goto 116
+           !get QR factorization
+            !call ZGEQRF( (j+1)*m, m, Htmp(1:(j+1)*m,1:j*m),(j+1)*m , qrtau, work, lwork, info )
+            if (info .ne. 0) then
+                print *,'Problem with least squares solution in GMRES'
+                print *,'ZGEQRF error info = ',info
+                stop
+            end if
+    
+            !get R matrix
+            !Rs(1:m*m0,1:m*m0)=Av2(1:m*m0,1:m*m0)
+            !call zlacpy('F',m*m0,m*m0,Av2(1,1),n,Rs(1,1),m*m0) 
+
+            !get Q matrix
+            !call ZUNGQR(  n, m0*m, m0*m, Av2, n, qrtau, work, lwork, info )
+            if (info .ne. 0) then
+                print *,'Problem with least squares solution in GMRES'
+                print *,'ZUNGQR error info = ',info
+                stop
+            end if
+            
+            !form reduced right hand side matrix:
+            !use V(1:n,1:m) since V(1:n,1:m) = r = B-Ax is the right hand side
+            !call ZGEMM('C','N',m*m0,m,n,(1.0d0,0.0d0),Av2,n,V(1:n,1:m),n,(0.0d0,0.0d0),Bs(1,1),m0*m)
+         
+            !solve upper triangular system Rs*x=Q'*Bs
+            !call ZTRTRS( 'U', 'N', 'N', m*m0, m, Rs, m*m0, Bs, m0*m, info )
+            if (info .ne. 0) then
+                print *,'Problem with least squares solution in GMRES'
+                print *,'ZTRTRS error info = ',info
+                stop
+            end if
+
+        116 continue
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
 
         !measure residual:
         !error=norm(R-V[1:n,1:(j+1)*m]*H[1:(j+1)*m,1:j*m]*ym)/norm(Brhs)
@@ -239,7 +289,7 @@ complex (kind=kind(0.0d0)), dimension(:), allocatable :: work,qrtau
 integer :: lwork,info
 integer, dimension(:),pointer :: ipiv
 
-integer :: j
+integer :: j,i
 
 nnza=isa(n+1)+1
 
@@ -274,7 +324,11 @@ if(k0==1) then !initialize everything
     end if
 
     !put R matrix into H:
-    Bsm(1:m,1:m)=V(1:m,1:m)
+    do i=1,m
+        do j=i,m
+            Bsm(i,j)=V(i,j)
+        end do
+    end do
 
     !put Q matrix into V:
     call ZUNGQR(  n, m, m, V(1:n,1:m), n, qrtau, work, lwork, info )
@@ -317,7 +371,15 @@ if (info .ne. 0) then
 end if
 
 !put R matrix into H:
-H(k0*m+1:(k0+1)*m,(k0-1)*m+1:k0*m)=Vnew(1:m,1:m)
+!H(k0*m+1:(k0+1)*m,(k0-1)*m+1:k0*m)=Vnew(1:m,1:m)
+do i=1,m
+    do j=i,m
+        H(k0*m+i,(k0-1)*m+j)=Vnew(i,j)
+    end do
+end do
+
+
+
 
 !put Q matrix into V:
 call ZUNGQR(  n, m, m, Vnew, n, qrtau, work, lwork, info )

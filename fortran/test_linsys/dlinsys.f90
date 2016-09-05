@@ -149,7 +149,7 @@ ze=(0.0d0,0.0d0)
 
 print *,'starting arnoldi'
 
-call blockGMRESarnoldi(UPLO,n,m0,dsa,isa,jsa,100,1,B,X,1.0d-16)
+call blockGMRESarnoldi(UPLO,n,m0,dsa,isa,jsa,100,2,B,X,1.0d-16)
 
 print *,'Sol=',X(1,1)
 
