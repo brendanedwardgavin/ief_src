@@ -1,5 +1,101 @@
+function blockGivens(vec)
+
+	(m,n)=size(vec)
+	vectype=typeof(vec[1])
+
+	M=zeros(2*n,2*n)
+
+	Y=vec[n+1:2*n,1:n]
+	X=vec[1:n,1:n]
+
+	B=\(X',Y')'
+
+	(l,x)=eig(B'*B)
+	for i in 1:n
+		l[i]=sqrt(1/(1+l[i]))
+	end
+	A=diagm(l)*x'
+
+	(l,x)=eig(B*B')
+	for i in 1:n
+		l[i]=sqrt(1/(1+l[i]))
+	end
+	C=diagm(l)*x'
+
+	M[1:n,1:n]=A
+	M[1:n,n+1:2*n]=A*B'
+	M[n+1:2*n,1:n]=-1*C*B
+	M[n+1:2*n,n+1:2*n]=C
+
+	return M
+end
+
 function gmres2(A,B,k,r,eps)
 
+	(n,m)=size(B)
+	mattype=typeof(A[1,1])
+	
+
+	R=zeros(mattype,n,m)
+	X=zeros(mattype,n,m)
+	X0=zeros(mattype,n,m)
+	
+	V=zeros(mattype,n,m*(k+1))
+	H=zeros(mattype,m*(k+1),m*k)
+	Bsm=zeros(mattype,m*(k+1),m)
+
+	err=0.0
+	for i in 1:r
+		X0[:]=X
+		R=B-A*X		
+
+		V[:,1:m]=R
+
+		println("V=",V[1,1])
+		for j in 1:k	
+			#blockArnoldiPlus(A,V,H,j,k,m)
+			blockArnoldiIt(A,V,H,Bsm,j,k,m)
+		
+			println("H=",sum(H))
+
+			println("Bsm=",sum(Bsm))
+
+			println("V=",sum(V))
+	
+			ym=\(H[1:(j+1)*m,1:j*m],Bsm[1:(j+1)*m,1:m])
+
+			#(Q,R)=qr(H[1:(j+1)*m,1:j*m])
+			#ym=\(R,Q'*Bsm[1:(j+1)*m,1:m])
+
+			println("Ym=",ym[1,1])
+
+			X=X0+V[1:n,1:j*m]*ym
+			#Res=B-A*X
+			Res=B-A*X0-V[1:n,1:(j+1)*m]*H[1:(j+1)*m,1:j*m]*ym
+			
+			println(i," ",j)
+			for l in 1:m
+				println("     ", norm(Res[:,l])/norm(B[:,l]))
+			end
+			err=norm(Res)/norm(B)
+			#println("$i, $j: $err")
+			if err<eps
+				break
+			end
+		end
+		
+		if err<eps
+			break
+		end
+	end
+	
+	return X
+end
+
+
+
+function gmres3(A,B,k,r,eps)
+#GMRES by doing full krylov subspace at each restart
 	(n,m)=size(B)
 	mattype=typeof(A[1,1])
 	
@@ -10,18 +106,21 @@ function gmres2(A,B,k,r,eps)
 	for i in 1:r
 		R=B-A*X
 
-		(V,H,Bsm)=blockArnoldiStart(A,R,k)
-		ym=\(H[1:2*m,1:m],Bsm[1:m,1:m])
-		X=X+V*ym
+		(V,H,Bsm)=blockArnoldi(A,R,k)
+		ym=\(H,Bsm)
+		X=X+V[1:n,1:m*k]*ym
 
-		for i in 2:k
-			
+		Res=B-A*X
+		err=norm(Res)/norm(B)
+		println("$i: ",err)
+		if err<eps
+			break
 		end
-		
 	end
 	
-
+	return X
 end
+
 
 
 
@@ -32,7 +131,7 @@ function blockArnoldiStart(A,V0,k)
 	V=zeros(Vtype,n,m*(k+1))
 	H=zeros(Vtype,m*(k+1),m*k)
 
-	Bsm=zeros(n,m)
+	Bsm=zeros(Vtype,m*(k+1),m)
 	(Q,R)=qr(V0)
 	Bsm[1:m,1:m]=R
 
@@ -83,6 +182,39 @@ function blockArnoldiPlus(A,V0,H0,k0,k,m)
 end
 
 
+function blockArnoldiIt(A,V,H,Bsm,k0,k,m)
+#assume V0, H0 are already allocated correctly
+#do the next iteration of arnoldi
+	n=size(V,1)
+	#m=convert(Int64,m/k)
+
+	Vtype=typeof(V[1,1])
+
+	if k0==1	
+		(Q,R)=qr(V[:,1:m])
+
+		V[:,1:m]=Q
+		Bsm[1:m,1:m]=R[1:m,1:m]
+	end
+
+
+
+	i=k0
+
+	Vnew=A*V[:,(i-1)*m+1:i*m]
+	for j in 1:i
+		Hnew=V[:,(j-1)*m+1:j*m]'*Vnew
+		H[(j-1)*m+1:j*m,(i-1)*m+1:i*m]=Hnew
+
+		Vnew=Vnew-V[:,(j-1)*m+1:j*m]*Hnew
+	end
+	(Q,R)=qr(Vnew)
+	V[:,i*m+1:(i+1)*m]=Q
+	H[i*m+1:(i+1)*m,(i-1)*m+1:i*m]=R
+
+end
+
+
 
 function blockArnoldi(A,V0,k)
 
@@ -92,6 +224,10 @@ function blockArnoldi(A,V0,k)
 	H=zeros(Vtype,m*(k+1),m*k)
 
 	(Q,R)=qr(V0)
+
+	Bsm=zeros((k+1)*m,m)
+	Bsm[1:m,1:m]=R
+
 	V[:,1:m]=Q
 	for i in 1:k
 		Vnew=A*V[:,(i-1)*m+1:i*m]
@@ -107,8 +243,43 @@ function blockArnoldi(A,V0,k)
 	end
 
 
-	return (V,H)
+	return (V,H,Bsm)
 end
+
+
+
+
+function blockArnoldiGivens(A,V0,k)
+
+	(n,m)=size(V0)
+	Vtype=typeof(V0[1,1])
+	V=zeros(Vtype,n,m*(k+1))
+	H=zeros(Vtype,m*(k+1),m*k)
+
+	(Q,R)=qr(V0)
+
+	Bsm=zeros((k+1)*m,m)
+	Bsm[1:m,1:m]=R
+
+	V[:,1:m]=Q
+	for i in 1:k
+		Vnew=A*V[:,(i-1)*m+1:i*m]
+		for j in 1:i
+			Hnew=V[:,(j-1)*m+1:j*m]'*Vnew
+			H[(j-1)*m+1:j*m,(i-1)*m+1:i*m]=Hnew
+
+			Vnew=Vnew-V[:,(j-1)*m+1:j*m]*Hnew
+		end
+		(Q,R)=qr(Vnew)
+		V[:,i*m+1:(i+1)*m]=Q
+		H[i*m+1:(i+1)*m,(i-1)*m+1:i*m]=R
+	end
+
+
+	return (V,H,Bsm)
+end
+
+
 
 
 

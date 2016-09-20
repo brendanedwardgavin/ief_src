@@ -88,6 +88,36 @@ end subroutine quicksort
 
 
 
+subroutine blockGivens(n,V,M) 
+implicit none
+
+!V: 2n x n    input
+!M: 2n x 2n   output
+integer :: n
+complex (kind=kind(0.0d0)), dimension(2*n,n) :: V
+complex (kind=kind(0.0d0)), dimension(2*n,2*n) :: M
+
+X=conjg(transpose(V(1:n,1:n)))
+Y=conjg(transpose(V(n+1:2*n,1:n)))
+
+!B=\(X,Y)
+
+call zgetrf(n,n,X,)
+
+!A=F, F'F=BB'
+!C=F, F'F=B'B
+
+M(1:n,1:n)=A
+
+!M(1:n,n+1:2*n)=A*B'
+!M(n+1:2*n,1:n)=-1.0d0*C*B
+!M(n+1:2*n,n+1:2*n)=C
+end subroutine blockGivens
+
+
+
+
+
 subroutine blockGMRESarnoldi(UPLO,n,m,dsa,isa,jsa,kmax,restarts,Brhs,Xlhs,eps)
 implicit none
 

@@ -11,8 +11,8 @@ srand(3)
 
 n=1000
 
-distmin=-50.0
-distmax=3.0
+distmin=51.0
+distmax=53.0
 
 #eigdist(x)=exp(x)
 #eigdist(x)=exp(-10*(x-1)^2)
@@ -43,6 +43,7 @@ A=F*A*F'
 m=1
 
 b=rand(n,m)
+#b=xacc[1:n,1:m]
 
 #X=regularCG(A,b,10)
 #X=blockCG(A,b,inv(A),5)
@@ -51,7 +52,17 @@ b=rand(n,m)
 
 #X=blockCGbasicnorm(A,b,2500)
 #X=blockCGbasic(A,b,50)
-X=stationaryIt(A,b,2,10)
+#X=stationaryIt(A,b,2,10)
+#X=fom(A,b,40,1e-16)
+X1=affine(A,b,n*10)
+err1=norm(b-A*X1)/norm(b)
 
+X2=affine(A,b,n*10)
+err2=norm(b-A*X2)/norm(b)
 
-println("\n\nLin sys residual = ",norm(b-A*X)/norm(b),"\n\n")
+X3=0.5*(X1+X2)
+err3=norm(b-A*X3)/norm(b)
+
+println("err1=$err1\nerr2=$err2\nerr3=$err3\n")
+
+#println("\n\nLin sys residual = ",norm(b-A*X)/norm(b),"\n\n")
