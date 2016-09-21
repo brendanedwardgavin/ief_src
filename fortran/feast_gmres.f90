@@ -97,17 +97,17 @@ integer :: n
 complex (kind=kind(0.0d0)), dimension(2*n,n) :: V
 complex (kind=kind(0.0d0)), dimension(2*n,2*n) :: M
 
-X=conjg(transpose(V(1:n,1:n)))
-Y=conjg(transpose(V(n+1:2*n,1:n)))
+!X=conjg(transpose(V(1:n,1:n)))
+!Y=conjg(transpose(V(n+1:2*n,1:n)))
 
 !B=\(X,Y)
 
-call zgetrf(n,n,X,)
+!call zgetrf(n,n,X,)
 
 !A=F, F'F=BB'
 !C=F, F'F=B'B
 
-M(1:n,1:n)=A
+!M(1:n,1:n)=A
 
 !M(1:n,n+1:2*n)=A*B'
 !M(n+1:2*n,1:n)=-1.0d0*C*B
@@ -185,7 +185,7 @@ do i=1,restarts
         !print *,'Bsm=',sum(Bsm)
         !print *,'V=',sum(V)
 
-        call zgels('N',(j+1)*m,j*m,m,Htmp(1:(j+1)*m,1:j*m),(j+1)*m,ym(1:(j+1)*m,1:m),(j+1)*m,work,lwork,info)
+        call zgels('N',(j+1)*m,j*m,m,Htmp(1,1),(kmax+1)*m,ym(1,1),(kmax+1)*m,work,lwork,info)
         if(info .ne. 0) then
             print *,'Error in blockGMRESarnoldi'
             print *,'ZGELS error ',info
@@ -240,8 +240,8 @@ do i=1,restarts
         !measure residual:
         !error=norm(R-V[1:n,1:(j+1)*m]*H[1:(j+1)*m,1:j*m]*ym)/norm(Brhs)
         R2=R
-        call zgemm('N','N',(j+1)*m,m,j*m,(1.0d0,0.0d0),H(1:(j+1)*m,1:j*m),(j+1)*m,ym(1:j*m,1:m),j*m,(0.0d0,0.0d0),Htmp(1:(j+1)*m,1:m),(j+1)*m)
-        call zgemm('N','N',n,m,(j+1)*m,(-1.0d0,0.0d0),V(1:n,1:(j+1)*m),n,Htmp(1:(j+1)*m,1:m),(j+1)*m,(1.0d0,0.0d0),R2(1:n,1:m),n)
+        call zgemm('N','N',(j+1)*m,m,j*m,(1.0d0,0.0d0),H(1,1),(kmax+1)*m,ym(1,1),(kmax+1)*m,(0.0d0,0.0d0),Htmp(1,1),(kmax+1)*m)
+        call zgemm('N','N',n,m,(j+1)*m,(-1.0d0,0.0d0),V(1,1),n,Htmp(1,1),(kmax+1)*m,(1.0d0,0.0d0),R2(1,1),n)
 
         !Xtmp=Xlhs(1:n,1:m)
         !call zgemm('N','N',n,m,j*m,(1.0d0,0.0d0),V(1:n,1:j*m),n,ym(1:j*m,1:m),j*m,(1.0d0,0.0d0),Xtmp(1:n,1:m),n)
@@ -271,7 +271,7 @@ do i=1,restarts
     !update solution
     !Xlhs=Xlhs+V[1:n,1:j*m]*ym
     j=jmax
-    call zgemm('N','N',n,m,j*m,(1.0d0,0.0d0),V(1:n,1:j*m),n,ym(1:j*m,1:m),j*m,(1.0d0,0.0d0),Xlhs(1:n,1:m),n)
+    call zgemm('N','N',n,m,j*m,(1.0d0,0.0d0),V(1,1),n,ym(1,1),(kmax+1)*m,(1.0d0,0.0d0),Xlhs(1,1),n)
 
     if(error<eps) then 
         exit
@@ -346,7 +346,7 @@ if(k0==1) then !initialize everything
     !V(:,1:m)=Q
 
     !get QR factorization
-    call ZGEQRF( n, m, V(1:n,1:m), n, qrtau, work, lwork, info )
+    call ZGEQRF( n, m, V(1,1), n, qrtau, work, lwork, info )
     if (info .ne. 0) then
         print *,'Problem with least squares solution in blockArnoldiIt'
         print *,'ZGEQRF error info = ',info
@@ -361,7 +361,7 @@ if(k0==1) then !initialize everything
     end do
 
     !put Q matrix into V:
-    call ZUNGQR(  n, m, m, V(1:n,1:m), n, qrtau, work, lwork, info )
+    call ZUNGQR(  n, m, m, V(1,1), n, qrtau, work, lwork, info )
     if (info .ne. 0) then
         print *,'Problem with least squares solution in ArnoldiIt'
         print *,'ZUNGQR error info = ',info
@@ -374,18 +374,18 @@ end if
 !Do matrix multiply:
 
 !Vnew=A*V0(:,(i-1)*m+1:i*m)
-call mkl_zcsrmm('N', n, m, n, (1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), V(1:n,(k0-1)*m+1:k0*m), n, (0.0d0,0.0d0), Vnew, n)
+call mkl_zcsrmm('N', n, m, n, (1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), V(1,(k0-1)*m+1), n, (0.0d0,0.0d0), Vnew, n)
 
 
 do j=1,k0 !Orthogonalize with respect to previous basis vectors:
     !Hnew=V(:,(j-1)*m+1:j*m)'*Vnew
-    call zgemm('C','N',m,m,n,(1.0d0,0.0d0),V(1:n,(j-1)*m+1:j*m),n,Vnew,n,(0.0d0,0.0d0),Hnew,m)
+    call zgemm('C','N',m,m,n,(1.0d0,0.0d0),V(1,(j-1)*m+1),n,Vnew,n,(0.0d0,0.0d0),Hnew,m)
 
     !H((j-1)*m+1:j*m,(k0-1)*m+1:k0*m)=Hnew
     H((j-1)*m+1:j*m,(k0-1)*m+1:k0*m)=Hnew
     !Vnew=Vnew-V(:,(j-1)*m+1:j*m)*Hnew
 
-    call zgemm('N','N',n,m,m,(-1.0d0,0.0d0),V(:,(j-1)*m+1:j*m),n,Hnew,m,(1.0d0,0.0d0),Vnew,n)
+    call zgemm('N','N',n,m,m,(-1.0d0,0.0d0),V(:,(j-1)*m+1),n,Hnew,m,(1.0d0,0.0d0),Vnew,n)
 
 end do
 
