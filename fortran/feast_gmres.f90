@@ -313,22 +313,25 @@ complex (kind=kind(0.0d0)), dimension((k+1)*m,*) ::H,Bsm
 
 integer :: nnza
 
-complex (kind=kind(0.0d0)), dimension(:,:), allocatable :: Hnew,Vnew
+!complex (kind=kind(0.0d0)), dimension(:,:), allocatable :: Hnew,Vnew
+complex (kind=kind(0.0d0)), dimension(m,m) :: Hnew
+complex (kind=kind(0.0d0)), dimension(n,m) :: Vnew
 
 !!!BLAS and lapack:
 character, dimension(6) :: matdescra
 !!lapack stuff:
-complex (kind=kind(0.0d0)), dimension(:), allocatable :: work,qrtau
+!complex (kind=kind(0.0d0)), dimension(:), allocatable :: work,qrtau
+complex (kind=kind(0.0d0)), dimension(3*n) :: work
+complex (kind=kind(0.0d0)), dimension(m) :: qrtau
 integer :: lwork,info
-integer, dimension(:),pointer :: ipiv
 
 integer :: j,i
 
 nnza=isa(n+1)+1
 
-allocate(Vnew(n,m),Hnew(m,m))
+!allocate(Vnew(n,m),Hnew(m,m))
 lwork=3*n
-allocate(work(lwork),qrtau(m))
+!allocate(work(lwork),qrtau(m))
 
 if(UPLO=='F') then
     matdescra(1)='G'
@@ -426,8 +429,8 @@ V(:,k0*m+1:(k0+1)*m)=Vnew
 
 !V(:,k0*m+1:(k0+1)*m)=Q
 !H(k0*m+1:(k0+1)*m,(k0-1)*m+1:k0*m)=R(1:m,1:m)
-deallocate(Vnew,Hnew)
-deallocate(work,qrtau)
+!deallocate(Vnew,Hnew)
+!deallocate(work,qrtau)
 
 end subroutine blockArnoldiIt
 
