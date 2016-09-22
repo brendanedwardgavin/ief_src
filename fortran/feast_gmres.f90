@@ -141,6 +141,8 @@ double precision :: error,error2
 
 integer :: i,j,jmax,l
 
+!print *,kmax,restarts
+
 allocate(V(n,(kmax+1)*m),H(1:(kmax+1)*m,1:kmax*m), Htmp((kmax+1)*m,kmax*m)  ,Bsm((kmax+1)*m,m), ym((kmax+1)*m,m), R(1:n,1:m), R2(1:n,1:m), Xtmp(1:n,1:m) )
 
 
@@ -166,8 +168,9 @@ do i=1,restarts
 
     if(i>1) then
         !R=Brhs-A*Xlhs
-        R=Brhs(1:n,1:m)
-        call mkl_zcsrmm('N', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), Xlhs(1,1), n, (1.0d0,0.0d0), R(1,1), n)
+        !R=Brhs(1:n,1:m)
+        R=R2
+        !call mkl_zcsrmm('N', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), Xlhs(1,1), n, (1.0d0,0.0d0), R(1,1), n)
     end if
 
     V(1:n,1:m)=R(1:n,1:m)
@@ -248,12 +251,12 @@ do i=1,restarts
         !R2=Brhs(1:n,1:m)
         !call mkl_zcsrmm('N', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), Xtmp(1,1), n, (1.0d0,0.0d0), R2(1,1), n)
 
-        print *,i,j
+        !print *,i,j
         error=0.0d0
         do l=1,m
             error2=dznrm2(n,R2(:,l),1)/dznrm2(n,Brhs(:,l),1)
             if (error2>error) error=error2
-            print *,'    ',error2
+        !    print *,'    ',error2
         end do
 
         !print *,i,j,error
@@ -279,18 +282,18 @@ do i=1,restarts
 end do
 
 
-    Xtmp=Xlhs(1:n,1:m)
+    !Xtmp=Xlhs(1:n,1:m)
     !call zgemm('N','N',n,m,j*m,(1.0d0,0.0d0),V(1:n,1:j*m),n,ym(1:j*m,1:m),j*m,(1.0d0,0.0d0),Xtmp(1:n,1:m),n)
-    R2=Brhs(1:n,1:m)
-    call mkl_zcsrmm('N', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), Xtmp(1,1), n, (1.0d0,0.0d0), R2(1,1), n)
+    !R2=Brhs(1:n,1:m)
+    !call mkl_zcsrmm('N', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), Xtmp(1,1), n, (1.0d0,0.0d0), R2(1,1), n)
 
     error=0.0d0
     do l=1,m
         error2=dznrm2(n,R2(:,l),1)/dznrm2(n,Brhs(:,l),1)
         if (error2>error) error=error2
     end do
-
-    print *,'Final error=',error
+    print *,'its ',i,j
+    print *,'     Final error=',error
 
 deallocate(V,H, Htmp  ,Bsm, ym, R, R2 )
 

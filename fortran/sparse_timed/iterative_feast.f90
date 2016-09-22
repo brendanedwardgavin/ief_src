@@ -128,6 +128,7 @@ subroutine dfeast_scsrgvxit(UPLO,N,sa,isa,jsa,sb,isb,jsb,fpm,epsout,loop,Emin,Em
     !=====================================================================
     ! Eric Polizzi 2009-2015
     !=====================================================================
+    use rundata
     implicit none
     include 'f90_noruntime_interface.fi'
     character(len=1) :: UPLO
@@ -180,6 +181,9 @@ integer :: infob,itmax
     double precision :: lintargeterror,linsyserror !goal error for linear system, return linear system error
 
     integer :: k
+
+    call initrundata(fpm(2),m0,fpm(4),fpm(50)*fpm(51))
+
 
     rank=0
     nb_procs=1
@@ -443,9 +447,11 @@ call wallocate_1d(nres,M0,infoloc) ! dummy
                   lintargeterror=1d-1
               endif
 
+              
+
               !if (loop<3) linresindex=m0
               if(fpm(11)==2) then !block CGLS
-              call zfeast_cglsRes(UPLO,n,m0,zsa,isa,jsa,ze2,nnza,workc,ztempmat,fpm(50),lintargeterror,linresindex,linsyserror) 
+                call zfeast_cglsRes(UPLO,n,m0,zsa,isa,jsa,ze2,nnza,workc,ztempmat,fpm(50),lintargeterror,linresindex,linsyserror) 
               end if
 
               if(fpm(11)==3) then !single vector BICGSTAB
@@ -466,6 +472,18 @@ call wallocate_1d(nres,M0,infoloc) ! dummy
                  call zbicgstab(UPLO,N,zsa,isa,jsa,M0,workc,ztempmat,nres,ares,itmax,lintargeterror,comb,infob) 
                     print *,'lin sys error=',ares
                     print *,'lin sys it = ',itmax
+              end if
+
+              if(fpm(11)==1) then
+                zsa(1:nnz)=-(1.0d0,0.0d0)*sa(1:nnz)
+                do  i=1,n
+                do k=isa(i),isa(i+1)-1
+                if (jsa(k)==i) zsa(k)=zsa(k)+Ze2
+                enddo
+                enddo
+
+                call blockGMRESarnoldi(UPLO,n,m0,zsa,isa,jsa,fpm(51),fpm(50),workc,ztempmat,lintargeterror) 
+
               end if
 
               workc=ztempmat
