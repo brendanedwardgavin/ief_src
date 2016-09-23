@@ -1,23 +1,5 @@
 
 
-double precision function elapsed_time(c1,c2)
-integer :: c1,c2
-integer :: diff
-integer :: maxcount,countrate
-
-call system_clock(count_rate=countrate,count_max=maxcount)
-
-if(c2<c1) then
-    diff=maxcount+c2-c1
-else
-    diff=c2-c1
-end if
-
-elapsed_time= dble(diff)/dble(countrate)
-
-end function elapsed_time
-
-
 subroutine zprintMat(Mat,n,rowmax,colmax)
 integer :: n,colmax,rowmax,j,k
 complex (kind=kind(0.0d0)), dimension(n,*) :: Mat
@@ -118,11 +100,12 @@ end subroutine blockGivens
 
 
 
-subroutine blockGMRESarnoldi(UPLO,n,m,dsa,isa,jsa,kmax,restarts,Brhs,Xlhs,eps)
+subroutine blockGMRESarnoldi(UPLO,n,m,dsa,isa,jsa,kmax,restarts,Brhs,Xlhs,eps,loops,blockstart)
+use rundata
 implicit none
 
 character :: UPLO
-integer :: n,m,kmax,restarts
+integer :: n,m,kmax,restarts,loops,blockstart
 integer, dimension(*) :: isa,jsa
 complex (kind=kind(0.0d0)), dimension(*) :: dsa
 complex (kind=kind(0.0d0)), dimension(n,m) :: Brhs,Xlhs
@@ -163,7 +146,7 @@ matdescra(4)='F'
 R=Brhs
 Xlhs=(0.0d0,0.0d0)
 
-
+loops=0
 do i=1,restarts
 
     if(i>1) then
@@ -176,9 +159,12 @@ do i=1,restarts
     V(1:n,1:m)=R(1:n,1:m)
 
     do j=1,kmax
-
+        loops=loops+1
         !next arnoldi step
+        call system_clock(count=tc1)
         call blockArnoldiIt(UPLO,n,m,dsa,isa,jsa,kmax,j,V,H,Bsm)
+        call system_clock(count=tc2)
+        arnolditime=arnolditime+elapsed_time(tc1,tc2)
 
         !solve system H(1:(j+1)*m,1:j*m)ym=Bsm(1:(j+1)*m,1:m)
         ym(1:(j+1)*m,1:m)=Bsm(1:(j+1)*m,1:m)
@@ -188,12 +174,15 @@ do i=1,restarts
         !print *,'Bsm=',sum(Bsm)
         !print *,'V=',sum(V)
 
+        call system_clock(count=tc1)      
         call zgels('N',(j+1)*m,j*m,m,Htmp(1,1),(kmax+1)*m,ym(1,1),(kmax+1)*m,work,lwork,info)
         if(info .ne. 0) then
             print *,'Error in blockGMRESarnoldi'
             print *,'ZGELS error ',info
             stop
         end if
+        call system_clock(count=tc2)
+        lstime=lstime+elapsed_time(tc1,tc2)
 
         !print *,'Ym=',ym(1,1)
 
@@ -256,6 +245,7 @@ do i=1,restarts
         do l=1,m
             error2=dznrm2(n,R2(:,l),1)/dznrm2(n,Brhs(:,l),1)
             if (error2>error) error=error2
+            linres(feastit,cpnum,loops,blockstart+l-1)=error2
         !    print *,'    ',error2
         end do
 
@@ -287,13 +277,14 @@ end do
     !R2=Brhs(1:n,1:m)
     !call mkl_zcsrmm('N', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), Xtmp(1,1), n, (1.0d0,0.0d0), R2(1,1), n)
 
-    error=0.0d0
-    do l=1,m
-        error2=dznrm2(n,R2(:,l),1)/dznrm2(n,Brhs(:,l),1)
-        if (error2>error) error=error2
-    end do
-    print *,'its ',i,j
-    print *,'     Final error=',error
+    !error=0.0d0
+    !do l=1,m
+    !    error2=dznrm2(n,R2(:,l),1)/dznrm2(n,Brhs(:,l),1)
+    !    if (error2>error) error=error2
+    !end do
+    
+    !print *,'its ',i,j
+    !print *,'     Final error=',error
 
 deallocate(V,H, Htmp  ,Bsm, ym, R, R2 )
 
@@ -302,6 +293,7 @@ end subroutine blockGMRESarnoldi
 
 
 subroutine blockArnoldiIt(UPLO,n,m,dsa,isa,jsa,k,k0,V,H,Bsm)
+use rundata
 implicit none
 
 character :: UPLO
@@ -350,7 +342,8 @@ if(k0==1) then !initialize everything
     !QR=V
     !Bsm(1:m,1:m)=R(1:m,1:m)
     !V(:,1:m)=Q
-
+    
+    call system_clock(count=tc1)
     !get QR factorization
     call ZGEQRF( n, m, V(1,1), n, qrtau, work, lwork, info )
     if (info .ne. 0) then
@@ -373,6 +366,8 @@ if(k0==1) then !initialize everything
         print *,'ZUNGQR error info = ',info
         stop
     end if
+    call system_clock(count=tc2)
+    qrtime=qrtime+elapsed_time(tc1,tc2)
 
 end if
 
@@ -380,9 +375,13 @@ end if
 !Do matrix multiply:
 
 !Vnew=A*V0(:,(i-1)*m+1:i*m)
+call system_clock(count=tc1)
 call mkl_zcsrmm('N', n, m, n, (1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), V(1,(k0-1)*m+1), n, (0.0d0,0.0d0), Vnew, n)
+call system_clock(count=tc2)
+mvtime=mvtime+elapsed_time(tc1,tc2)
+nmatvec(feastit,cpnum)=nmatvec(feastit,cpnum)+m
 
-
+call system_clock(count=tc1)
 do j=1,k0 !Orthogonalize with respect to previous basis vectors:
     !Hnew=V(:,(j-1)*m+1:j*m)'*Vnew
     call zgemm('C','N',m,m,n,(1.0d0,0.0d0),V(1,(j-1)*m+1),n,Vnew,n,(0.0d0,0.0d0),Hnew,m)
@@ -394,10 +393,13 @@ do j=1,k0 !Orthogonalize with respect to previous basis vectors:
     call zgemm('N','N',n,m,m,(-1.0d0,0.0d0),V(:,(j-1)*m+1),n,Hnew,m,(1.0d0,0.0d0),Vnew,n)
 
 end do
+call system_clock(count=tc2)
+gstime=gstime+elapsed_time(tc1,tc2)
 
 
 !Use QR to orthonormalize new vectors:
 
+call system_clock(count=tc1)
 !get QR factorization
 call ZGEQRF( n, m, Vnew, n, qrtau, work, lwork, info )
 if (info .ne. 0) then
@@ -415,8 +417,6 @@ do i=1,m
 end do
 
 
-
-
 !put Q matrix into V:
 call ZUNGQR(  n, m, m, Vnew, n, qrtau, work, lwork, info )
 if (info .ne. 0) then
@@ -426,7 +426,8 @@ if (info .ne. 0) then
 end if
 
 V(:,k0*m+1:(k0+1)*m)=Vnew
-
+call system_clock(count=tc2)
+qrtime=qrtime+elapsed_time(tc1,tc2)
 !V(:,k0*m+1:(k0+1)*m)=Q
 !H(k0*m+1:(k0+1)*m,(k0-1)*m+1:k0*m)=R(1:m,1:m)
 !deallocate(Vnew,Hnew)
@@ -705,7 +706,8 @@ end subroutine dfeast_gmres
 
 
 subroutine zfeast_gmres(ijob,stateVars,Brhs,x,V,Av,Ax,ze,n,m,maxm,eps,restarts,m0,xwork,workin,Av2,times)
-implicit none
+    use rundata
+    implicit none
     include 'f90_noruntime_interface.fi'
     
     integer :: ijob,n,m,restarts,m0,i,j,k,l
@@ -755,7 +757,7 @@ implicit none
     !timing:
     double precision :: times
     integer :: c1,c2
-    double precision, external :: elapsed_time
+    !double precision, external :: elapsed_time
   
     !measuring norm:
     integer :: maxm !how many linear systems to look at in determining eps
@@ -1001,6 +1003,7 @@ end subroutine zfeast_gmres
 
 
 subroutine zfeast_gmres_norm(ijob,stateVars,Brhs,x,V,Av,Ax,ze,n,m,maxm,eps,restarts,m0,xwork,workin,Av2,times)
+use rundata
 implicit none
     include 'f90_noruntime_interface.fi'
     
@@ -1051,7 +1054,7 @@ implicit none
     !timing:
     double precision :: times
     integer :: c1,c2
-    double precision, external :: elapsed_time
+    !double precision, external :: elapsed_time
   
     !measuring norm:
     integer :: maxm !how many linear systems to look at in determining eps
@@ -1749,6 +1752,7 @@ call mkl_zcsrmm('N', n, M0, n, ONEC, matdescra, saz, jsa, isa, isa(2), pb, n, (0
 
 
 subroutine zfeast_cglsRes(UPLO,n,m,dsa,isa,jsa,ze,nnza,B,X,maxit,eps,neigs,error)
+use rundata
 implicit none
 !A=Az=(ze*I-A) in this routine
 
@@ -1807,10 +1811,13 @@ implicit none
     D=B(1:n,1:m)
 
     !R=A'*B
+    call system_clock(count=tc1)
     R=B(1:n,1:m)
     call mkl_zcsrmm('C', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), B, n, (1.0d0,0.0d0)*conjg(ze), R, n)
     !R(1:n,1:m)=-1.0*B(1:n,1:m)
-    
+    call system_clock(count=tc2)
+    nmatvec(feastit,cpnum)=nmatvec(feastit,cpnum)+m
+    mvtime=mvtime+elapsed_time(tc1,tc2)
     !call mkl_zcsrmm('N', n, m, n, 1.0d0, matdescra, dsa, jsa, isa, isa(2), X, n, 0.0d0, linwork2, n)
     
     !P=-R
@@ -1829,7 +1836,13 @@ implicit none
         !lambda=inv(P'*A'*A*P)*R'*R
         !-----T=A*P
         T=P
-        call mkl_zcsrmm('N', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), P, n, ze, T, n)
+        call system_clock(count=tc1)
+        call mkl_zcsrmm('N', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), P, n, ze, T, n) 
+        call system_clock(count=tc2)
+        nmatvec(feastit,cpnum)=nmatvec(feastit,cpnum)+m
+        mvtime=mvtime+elapsed_time(tc1,tc2)
+
+        call system_clock(count=tc1)
         !-----sqtemp=T'*T
         call zgemm('C','N',m,m,n,(1.0d0,0.0d0),T,n,T,n,(0.0d0,0.0d0),sqtemp1,m)
         !-----lambda=R'*R    !might be better to do (inv(P'A'AP)R')R, not sure...
@@ -1851,11 +1864,16 @@ implicit none
 
         !D=D-T*lambda
         call zgemm('N','N',n,m,m,(-1.0d0,0.0d0),T,n,lambda,m,(1.0d0,0.0d0),D,n)
+        call system_clock(count=tc2)
+        gstime=gstime+elapsed_time(tc1,tc2)
 
         !Rnew=A'*D 
         Rnew=D
+        call system_clock(count=tc1)
         call mkl_zcsrmm('C', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), D, n, conjg(ze), Rnew, n)
-
+        call system_clock(count=tc2)
+        nmatvec(feastit,cpnum)=nmatvec(feastit,cpnum)+m
+        mvtime=mvtime+elapsed_time(tc1,tc2)
         !measure residual
         error=0.0d0
         do j=1,m
@@ -1874,6 +1892,7 @@ implicit none
 
         if(debug>0) print *,'Rnew = ', Rnew(1:n,1)
 
+        call system_clock(count=tc1)
         !psi=inv(R'*R)*Rnew'*Rnew
         !-----sqtemp1=R'*R
         call zgemm('C','N',m,m,n,(1.0d0,0.0d0),R,n,R,n,(0.0d0,0.0d0),sqtemp1,m)
@@ -1893,6 +1912,8 @@ implicit none
         temp1=P
         P=Rnew
         call zgemm('N','N',n,m,m,(1.0d0,0.0d0),temp1,n,psi,m,(1.0d0,0.0d0),P,n)
+        call system_clock(count=tc2)
+        gstime=gstime+elapsed_time(tc1,tc2)
 
         if(debug>0) print *,'Pnew = ', P(1:n,1)
 
@@ -2231,6 +2252,7 @@ end subroutine zfeast_cgne
 
 
 subroutine zfeast_gmrespre(ijob,stateVars,Brhs,x,V,Av,Ax,ze,n,m,maxm,eps,restarts,m0,xwork,workin,Av2,times)
+use rundata
 implicit none
     include 'f90_noruntime_interface.fi'
     
@@ -2281,7 +2303,7 @@ implicit none
     !timing:
     double precision :: times
     integer :: c1,c2
-    double precision, external :: elapsed_time
+    !double precision, external :: elapsed_time
   
     !measuring norm:
     integer :: maxm !how many linear systems to look at in determining eps

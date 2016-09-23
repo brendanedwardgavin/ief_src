@@ -178,9 +178,13 @@ integer :: infob,itmax
     complex(kind=(kind(1.0d0))), dimension(:,:), pointer :: ztempmat
     complex(kind=(kind(1.0d0))),dimension(:),pointer :: zsa
     integer :: linresindex !number of RHS to use in measuring linear system error
+    integer :: blockits,blockremainder
     double precision :: lintargeterror,linsyserror !goal error for linear system, return linear system error
-
+    integer :: linloops
+    double precision :: linepsout
     integer :: k
+
+    integer :: oldloop
 
     call initrundata(fpm(2),m0,fpm(4),fpm(50)*fpm(51))
 
@@ -378,12 +382,37 @@ integer :: infob,itmax
 call wallocate_1d(nres,M0,infoloc) ! dummy
     end if
 
-    ijob=-1 ! initialization 
+    ijob=-1 ! initialization
+
+    !!!!!!!!!! start keeping track of stuff
+    cpnum=0
+    oldloop=0
+    call system_clock(count=startcount)
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
     do while (ijob/=0)
        call dfeast_srcix(ijob,N,Ze,work,workc,Aq,Sq,fpm,epsout,loop,Emin,Emax,M0,E,X,mode,res,info,Zne,Wne)    
+       
+        feastit=loop
+        if(oldloop .ne. loop) then !new iteration
+            call system_clock(count=tc1)
+            eigtime(loop)=elapsed_time(startcount,tc1)
+            eigres(oldloop)=epsout
+            oldloop=loop
+        end if
+        
         !print *,epsout
        select case(ijob)
        case(10) !! factorize (zeB-A)
+          
+          !!!!!! keep track of contour points
+          if (cpnum<fpm(2)) then
+              cpnum=cpnum+1
+          else
+              cpnum=1
+          end if
+          cpval(cpnum)=ze
+          !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
           if (fpm(11)==0) then
 
@@ -481,10 +510,27 @@ call wallocate_1d(nres,M0,infoloc) ! dummy
                 if (jsa(k)==i) zsa(k)=zsa(k)+Ze2
                 enddo
                 enddo
+               
 
-                call blockGMRESarnoldi(UPLO,n,m0,zsa,isa,jsa,fpm(51),fpm(50),workc,ztempmat,lintargeterror) 
+                !call blockGMRESarnoldi(UPLO,n,m0,zsa,isa,jsa,fpm(51),fpm(50),workc,ztempmat,lintargeterror) 
 
+                !use fpm(53) as block size
+                blockits=m0/fpm(53)
+                blockremainder=m0-blockits*fpm(53)
+                do i=1,blockits
+                    !print *,'block ',i
+                    call blockGMRESarnoldi(UPLO,n,fpm(53),zsa,isa,jsa,fpm(51),fpm(50),workc(1,1+(i-1)*fpm(53)),ztempmat(1,1+(i-1)*fpm(53)),lintargeterror,linloops,1+(i-1)*fpm(53)) 
+                    !workc(1+(i-1)*fpm(53):i*fpm(53),1:n)=ztempmat(1:fpm(53),1:n)
+                    linit(feastit,cpnum,1+(i-1)*fpm(53):i*fpm(53))=linloops
+                end do
+                !print *,'i ',i,blockits
+                if(blockremainder .ne. 0) then
+                    call blockGMRESarnoldi(UPLO,n,blockremainder,zsa,isa,jsa,fpm(51),fpm(50),workc(1,1+(i-1)*fpm(53)),ztempmat(1,1+(i-1)*fpm(53)),lintargeterror,linloops,1+(i-1)*fpm(53))
+                    linit(feastit,cpnum,1+(i-1)*fpm(53):m0)=linloops
+                end if
               end if
+
+
 
               workc=ztempmat
         end if
