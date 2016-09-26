@@ -186,8 +186,7 @@ integer :: infob,itmax
 
     integer :: oldloop
 
-    call initrundata(fpm(2),m0,fpm(4),fpm(50)*fpm(51))
-
+    
 
     rank=0
     nb_procs=1
@@ -387,7 +386,7 @@ call wallocate_1d(nres,M0,infoloc) ! dummy
     !!!!!!!!!! start keeping track of stuff
     cpnum=0
     oldloop=0
-    call system_clock(count=startcount)
+    
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     do while (ijob/=0)
@@ -397,7 +396,9 @@ call wallocate_1d(nres,M0,infoloc) ! dummy
         if(oldloop .ne. loop) then !new iteration
             call system_clock(count=tc1)
             eigtime(loop)=elapsed_time(startcount,tc1)
-            eigres(oldloop)=epsout
+            eigres(loop)=epsout
+            ritzvals(loop,1:m0)=E(1:m0)
+            eigresall(loop,1:m0)=res(1:m0)
             oldloop=loop
         end if
         
@@ -471,7 +472,7 @@ call wallocate_1d(nres,M0,infoloc) ! dummy
               end if
 
               if(epsout <=1.0d-1 .and. loop>0) then
-                  lintargeterror=epsout!1d-1*epsout
+                  lintargeterror=1d-1*epsout
               else
                   lintargeterror=1d-1
               endif
@@ -480,7 +481,8 @@ call wallocate_1d(nres,M0,infoloc) ! dummy
 
               !if (loop<3) linresindex=m0
               if(fpm(11)==2) then !block CGLS
-                call zfeast_cglsRes(UPLO,n,m0,zsa,isa,jsa,ze2,nnza,workc,ztempmat,fpm(50),lintargeterror,linresindex,linsyserror) 
+                call zfeast_cglsRes(UPLO,n,m0,zsa,isa,jsa,ze2,nnza,workc,ztempmat,fpm(50),lintargeterror,linresindex,linsyserror,linloops) 
+                !linit(feastit,cpnum,1+(i-1)*fpm(53):m0)=linloops
               end if
 
               if(fpm(11)==3) then !single vector BICGSTAB
@@ -529,8 +531,6 @@ call wallocate_1d(nres,M0,infoloc) ! dummy
                     linit(feastit,cpnum,1+(i-1)*fpm(53):m0)=linloops
                 end if
               end if
-
-
 
               workc=ztempmat
         end if

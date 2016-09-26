@@ -1751,7 +1751,7 @@ call mkl_zcsrmm('N', n, M0, n, ONEC, matdescra, saz, jsa, isa, isa(2), pb, n, (0
   end subroutine zbicgstab
 
 
-subroutine zfeast_cglsRes(UPLO,n,m,dsa,isa,jsa,ze,nnza,B,X,maxit,eps,neigs,error)
+subroutine zfeast_cglsRes(UPLO,n,m,dsa,isa,jsa,ze,nnza,B,X,maxit,eps,neigs,error,its)
 use rundata
 implicit none
 !A=Az=(ze*I-A) in this routine
