@@ -395,10 +395,11 @@ call wallocate_1d(nres,M0,infoloc) ! dummy
         feastit=loop
         if(oldloop .ne. loop) then !new iteration
             call system_clock(count=tc1)
-            eigtime(loop)=elapsed_time(startcount,tc1)
-            eigres(loop)=epsout
-            ritzvals(loop,1:m0)=E(1:m0)
-            eigresall(loop,1:m0)=res(1:m0)
+            eigtime(oldloop)=elapsed_time(startcount,tc1)
+            eigres(oldloop)=epsout
+            !call quicksort(E,1,m0)
+            ritzvals(oldloop,1:m0)=E(1:m0)
+            eigresall(oldloop,1:m0)=res(1:m0)
             oldloop=loop
         end if
         
@@ -472,38 +473,36 @@ call wallocate_1d(nres,M0,infoloc) ! dummy
               end if
 
               if(epsout <=1.0d-1 .and. loop>0) then
-                  lintargeterror=1d-1*epsout
+                  lintargeterror=1d-2*epsout
               else
                   lintargeterror=1d-1
-              endif
-
-              
+              endif          
 
               !if (loop<3) linresindex=m0
-              if(fpm(11)==2) then !block CGLS
-                call zfeast_cglsRes(UPLO,n,m0,zsa,isa,jsa,ze2,nnza,workc,ztempmat,fpm(50),lintargeterror,linresindex,linsyserror,linloops) 
+              !if(fpm(11)==2) then !block CGLS
+              !  call zfeast_cglsRes(UPLO,n,m0,zsa,isa,jsa,ze2,nnza,workc,ztempmat,fpm(50),lintargeterror,linresindex,linsyserror,linloops) 
                 !linit(feastit,cpnum,1+(i-1)*fpm(53):m0)=linloops
-              end if
+              !end if
 
-              if(fpm(11)==3) then !single vector BICGSTAB
-                zsa(1:nnz)=-(1.0d0,0.0d0)*sa(1:nnz)
-                do  i=1,n
-                do k=isa(i),isa(i+1)-1
-                if (jsa(k)==i) zsa(k)=zsa(k)+Ze2
-                enddo
-                enddo
+              !if(fpm(11)==3) then !single vector BICGSTAB
+                !zsa(1:nnz)=-(1.0d0,0.0d0)*sa(1:nnz)
+                !do  i=1,n
+                !do k=isa(i),isa(i+1)-1
+                !if (jsa(k)==i) zsa(k)=zsa(k)+Ze2
+                !enddo
+                !enddo
 
-                do i=1,m0
+                !do i=1,m0
                 !call zfeast_BiCGSTABRes(UPLO,n,zsa,isa,jsa,ze2,nnza,workc(:,i),ztempmat(:,i),fpm(50),lintargeterror,linresindex,linsyserror) 
-                end do
+               ! end do
 
-                ztempmat(1:N,1:M0)=(0.0d0,0.0d0)
-                 comb=.true.
-                 itmax=fpm(50)
-                 call zbicgstab(UPLO,N,zsa,isa,jsa,M0,workc,ztempmat,nres,ares,itmax,lintargeterror,comb,infob) 
-                    print *,'lin sys error=',ares
-                    print *,'lin sys it = ',itmax
-              end if
+              !  ztempmat(1:N,1:M0)=(0.0d0,0.0d0)
+              !   comb=.true.
+              !   itmax=fpm(50)
+              !   call zbicgstab(UPLO,N,zsa,isa,jsa,M0,workc,ztempmat,nres,ares,itmax,lintargeterror,comb,infob) 
+              !      print *,'lin sys error=',ares
+              !     print *,'lin sys it = ',itmax
+              !end if
 
               if(fpm(11)==1) then
                 zsa(1:nnz)=-(1.0d0,0.0d0)*sa(1:nnz)
@@ -512,26 +511,32 @@ call wallocate_1d(nres,M0,infoloc) ! dummy
                 if (jsa(k)==i) zsa(k)=zsa(k)+Ze2
                 enddo
                 enddo
-               
+              end if
 
                 !call blockGMRESarnoldi(UPLO,n,m0,zsa,isa,jsa,fpm(51),fpm(50),workc,ztempmat,lintargeterror) 
-
+              if(fpm(11)>0) then
                 !use fpm(53) as block size
                 blockits=m0/fpm(53)
                 blockremainder=m0-blockits*fpm(53)
+                
                 do i=1,blockits
+                    linresindex=fpm(53)
                     !print *,'block ',i
-                    call blockGMRESarnoldi(UPLO,n,fpm(53),zsa,isa,jsa,fpm(51),fpm(50),workc(1,1+(i-1)*fpm(53)),ztempmat(1,1+(i-1)*fpm(53)),lintargeterror,linloops,1+(i-1)*fpm(53)) 
+                    if(fpm(11)==1) call blockGMRESarnoldi(UPLO,n,fpm(53),zsa,isa,jsa,fpm(51),fpm(50),workc(1,1+(i-1)*fpm(53)),ztempmat(1,1+(i-1)*fpm(53)),lintargeterror,linloops,1+(i-1)*fpm(53)) 
+                    if(fpm(11)==2) call zfeast_cglsRes(UPLO,n,fpm(53),zsa,isa,jsa,ze2,nnza,workc(1,1+(i-1)*fpm(53)),ztempmat(1,1+(i-1)*fpm(53)),fpm(51)*fpm(50),lintargeterror,linresindex,linsyserror,linloops)
                     !workc(1+(i-1)*fpm(53):i*fpm(53),1:n)=ztempmat(1:fpm(53),1:n)
                     linit(feastit,cpnum,1+(i-1)*fpm(53):i*fpm(53))=linloops
                 end do
                 !print *,'i ',i,blockits
                 if(blockremainder .ne. 0) then
-                    call blockGMRESarnoldi(UPLO,n,blockremainder,zsa,isa,jsa,fpm(51),fpm(50),workc(1,1+(i-1)*fpm(53)),ztempmat(1,1+(i-1)*fpm(53)),lintargeterror,linloops,1+(i-1)*fpm(53))
+                    linresindex=blockremainder
+                    if(fpm(11)==1) call blockGMRESarnoldi(UPLO,n,blockremainder,zsa,isa,jsa,fpm(51),fpm(50),workc(1,1+(i-1)*fpm(53)),ztempmat(1,1+(i-1)*fpm(53)),lintargeterror,linloops,1+(i-1)*fpm(53))
+                    if(fpm(11)==2) call zfeast_cglsRes(UPLO,n,blockremainder,zsa,isa,jsa,ze2,nnza,workc(1,1+(i-1)*fpm(53)),ztempmat(1,1+(i-1)*fpm(53)),fpm(51)*fpm(50),lintargeterror,linresindex,linsyserror,linloops)
                     linit(feastit,cpnum,1+(i-1)*fpm(53):m0)=linloops
                 end if
               end if
 
+              print *, 'lin sys',cpnum,sum(linit(feastit,cpnum,1:m0))/m0
               workc=ztempmat
         end if
 
@@ -554,6 +559,13 @@ call wallocate_1d(nres,M0,infoloc) ! dummy
 
        end select
     end do
+
+    call system_clock(count=tc1)
+    eigtime(loop)=elapsed_time(startcount,tc1)
+    eigres(loop)=epsout
+    !call quicksort(E,1,m0)
+    ritzvals(loop,1:m0)=E(1:m0)
+    eigresall(loop,1:m0)=res(1:m0)
 
 !!!!!!!!!!!!!!!!!!!!!!!
 !!!! release memory

@@ -1933,12 +1933,12 @@ implicit none
         if(debug>0 .and. i>1) stop
     end do  
     
-    print *,'   linits=',its
-    print *,'      errors=',error,errorprint
+    !print *,'   linits=',its
+    !print *,'      errors=',error,errorprint
     if (error<errorprint) then
-        do i=1,m
+        !do i=1,m
         !print *,'   ',errorlist(i)
-        end do
+        !end do
     end if
 
     !measure actual error:

@@ -101,7 +101,7 @@ module rundata
         !save eigenvector residuals:
         open(unit=10,file='../output/'//trim(outname)//'_eigresiduals.dat',status='REPLACE')
         do i=0,feastloop
-            write (10,"(I3, ES15.5)") i,eigres(i)
+            write (10,"(I3, ES15.5)") i+1,eigres(i)
             !write (10,"(I3, 3ES15.5, F8.2)") i,timelist(i),reslist(i),linsysreslist(i),linsysitavg(i)
             !write(10,*) i,timelist(i),reslist(i),linsysreslist(i)
         end do
@@ -110,7 +110,7 @@ module rundata
         !save eigenvector residuals
         open(unit=10,file='../output/'//trim(outname)//'_eigresidualsall.dat',status='REPLACE')
         do i=0,feastloop
-            write (10,"(I3)",advance="no") i
+            write (10,"(I3)",advance="no") i+1
             write (10,"("//m0str//"ES15.5)") (eigresall(i,k), k=1,m0d)
         end do
         close(10)       
@@ -118,9 +118,9 @@ module rundata
         !save linear system iterations: 
         do i=1,ncp
             write(cpstr,"(I5)") i
-            open(unit=10,file='../output/'//trim(outname)//'_linsysit'//trim(cpstr)//'.dat',status='REPLACE')
+            open(unit=10,file='../output/'//trim(outname)//'_linsysit'//trim(adjustl(cpstr))//'.dat',status='REPLACE')
             do j=0,feastloop
-                write (10,"(I3)",advance="no") j
+                write (10,"(I3)",advance="no") j+1
                 write (10, "("//m0str//"I4)") (linit(j,i,k), k=1,m0d)
             end do
             close(10)
@@ -129,7 +129,7 @@ module rundata
         !save ritz values
         open(unit=10,file='../output/'//trim(outname)//'_ritzvals.dat',status='REPLACE')
         do j=0,feastloop
-            write (10,"(I3)",advance="no") j
+            write (10,"(I3)",advance="no") j+1
             write (10, "("//m0str//"ES15.5)") (ritzvals(j,k), k=1,m0d)
         end do
         close(10)
@@ -140,5 +140,6 @@ module rundata
             write (10,"(2ES15.5)") dble(cpval(i)),aimag(cpval(i))
         end do 
         close(10)
+       
     end subroutine savedata
 end module

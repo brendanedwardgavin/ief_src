@@ -107,7 +107,7 @@ call system_clock(count=endcount)
 totaltime=elapsed_time(startcount,endcount)
 
     !save collected data:
-   !call savedata(loop) 
+   call savedata(loop) 
 
    !print out timing stuff:
    call printTimes()
