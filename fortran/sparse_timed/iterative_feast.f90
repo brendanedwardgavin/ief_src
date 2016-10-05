@@ -186,7 +186,18 @@ integer :: infob,itmax
 
     integer :: oldloop
 
-    
+    !!!BLAS and lapack:
+    character, dimension(6) :: matdescra
+
+    if(UPLO=='F') then
+        matdescra(1)='G'
+    else
+        matdescra(1)='S'
+    end if
+    !matdescra(1)='G'
+    matdescra(2)=UPLO
+    matdescra(3)='N'
+    matdescra(4)='F'
 
     rank=0
     nb_procs=1
@@ -504,14 +515,14 @@ call wallocate_1d(nres,M0,infoloc) ! dummy
               !     print *,'lin sys it = ',itmax
               !end if
 
-              if(fpm(11)==1) then
-                zsa(1:nnz)=-(1.0d0,0.0d0)*sa(1:nnz)
-                do  i=1,n
-                do k=isa(i),isa(i+1)-1
-                if (jsa(k)==i) zsa(k)=zsa(k)+Ze2
-                enddo
-                enddo
-              end if
+              !if(fpm(11)==1) then
+              !  zsa(1:nnz)=-(1.0d0,0.0d0)*sa(1:nnz)
+              !  do  i=1,n
+              !  do k=isa(i),isa(i+1)-1
+              !  if (jsa(k)==i) zsa(k)=zsa(k)+Ze2
+              !  enddo
+              !  enddo
+              !end if
 
                 !call blockGMRESarnoldi(UPLO,n,m0,zsa,isa,jsa,fpm(51),fpm(50),workc,ztempmat,lintargeterror) 
               if(fpm(11)>0) then
@@ -520,17 +531,19 @@ call wallocate_1d(nres,M0,infoloc) ! dummy
                 blockremainder=m0-blockits*fpm(53)
                 
                 do i=1,blockits
+
                     linresindex=fpm(53)
-                    !print *,'block ',i
-                    if(fpm(11)==1) call blockGMRESarnoldi(UPLO,n,fpm(53),zsa,isa,jsa,fpm(51),fpm(50),workc(1,1+(i-1)*fpm(53)),ztempmat(1,1+(i-1)*fpm(53)),lintargeterror,linloops,1+(i-1)*fpm(53)) 
+                    if(fpm(11)==1) call blockGMRESarnoldi(UPLO,n,fpm(53),zsa,isa,jsa,ze2,fpm(51),fpm(50),workc(1,1+(i-1)*fpm(53)),ztempmat(1,1+(i-1)*fpm(53)),lintargeterror,linloops,1+(i-1)*fpm(53)) 
                     if(fpm(11)==2) call zfeast_cglsRes(UPLO,n,fpm(53),zsa,isa,jsa,ze2,nnza,workc(1,1+(i-1)*fpm(53)),ztempmat(1,1+(i-1)*fpm(53)),fpm(51)*fpm(50),lintargeterror,linresindex,linsyserror,linloops)
                     !workc(1+(i-1)*fpm(53):i*fpm(53),1:n)=ztempmat(1:fpm(53),1:n)
                     linit(feastit,cpnum,1+(i-1)*fpm(53):i*fpm(53))=linloops
+                    !print *,'block ',i,linloops
+
                 end do
                 !print *,'i ',i,blockits
                 if(blockremainder .ne. 0) then
                     linresindex=blockremainder
-                    if(fpm(11)==1) call blockGMRESarnoldi(UPLO,n,blockremainder,zsa,isa,jsa,fpm(51),fpm(50),workc(1,1+(i-1)*fpm(53)),ztempmat(1,1+(i-1)*fpm(53)),lintargeterror,linloops,1+(i-1)*fpm(53))
+                    if(fpm(11)==1) call blockGMRESarnoldi(UPLO,n,blockremainder,zsa,isa,jsa,ze2,fpm(51),fpm(50),workc(1,1+(i-1)*fpm(53)),ztempmat(1,1+(i-1)*fpm(53)),lintargeterror,linloops,1+(i-1)*fpm(53))
                     if(fpm(11)==2) call zfeast_cglsRes(UPLO,n,blockremainder,zsa,isa,jsa,ze2,nnza,workc(1,1+(i-1)*fpm(53)),ztempmat(1,1+(i-1)*fpm(53)),fpm(51)*fpm(50),lintargeterror,linresindex,linsyserror,linloops)
                     linit(feastit,cpnum,1+(i-1)*fpm(53):m0)=linloops
                 end if
@@ -541,20 +554,26 @@ call wallocate_1d(nres,M0,infoloc) ! dummy
         end if
 
        case(30) !! perform multiplication A*x(1:N,fpm(24):fpm(24)+fpm(25)-1) result in work(1:N,fpm(24)+fpm(25)-1)
-
+          !matdescra(2)='U'
           if ((UPLO=='U').or.(UPLO=='u')) then
-             call dcsrmm('U','N',N,N,fpm(25),DONE,sa,isa,jsa,X(1,fpm(24)),DZERO,work(1,fpm(24)))
+          !   call dcsrmm('U','N',N,N,fpm(25),DONE,sa,isa,jsa,X(1,fpm(24)),DZERO,work(1,fpm(24)))
+          !    call mkl_dcsrmm('N', n, m0, n, 0.0d0, matdescra, sa, jsa, isa, isa(2), X, n, 0.0d0, work, n)
           else
-             call dcsrmm('U','N',N,N,fpm(25),DONE,ssa,sisa,sjsa,X(1,fpm(24)),DZERO,work(1,fpm(24)))
+          !   call dcsrmm('U','N',N,N,fpm(25),DONE,ssa,sisa,sjsa,X(1,fpm(24)),DZERO,work(1,fpm(24)))
+          !    call mkl_dcsrmm('N', n, m0, n, 0.0d0, matdescra, ssa, sjsa, sisa, sisa(2), X, n, 0.0d0, work, n)
           end if
 
-       case(40) !! perform multiplication B*x(1:N,fpm(24):fpm(24)+fpm(25)-1) result in work(1:N,fpm(24)+fpm(25)-1)
+            call mkl_dcsrmm('N', n, m0, n, 1.0d0, matdescra, sa, jsa, isa, isa(2), X, n, 0.0d0, work, n)
 
-          if ((UPLO=='U').or.(UPLO=='u')) then
-             call dcsrmm('U','N',N,N,fpm(25),DONE,sb,isb,jsb,X(1,fpm(24)),DZERO,work(1,fpm(24)))
-          else
-             call dcsrmm('U','N',N,N,fpm(25),DONE,ssb,sisb,sjsb,X(1,fpm(24)),DZERO,work(1,fpm(24)))
-          end if
+        case(40) !! perform multiplication B*x(1:N,fpm(24):fpm(24)+fpm(25)-1) result in work(1:N,fpm(24)+fpm(25)-1)
+
+          !if ((UPLO=='U').or.(UPLO=='u')) then
+          !   call dcsrmm('U','N',N,N,fpm(25),DONE,sb,isb,jsb,X(1,fpm(24)),DZERO,work(1,fpm(24)))
+          !else
+          !   call dcsrmm('U','N',N,N,fpm(25),DONE,ssb,sisb,sjsb,X(1,fpm(24)),DZERO,work(1,fpm(24)))
+          !end if
+          work(1:n,1:m0)=X(1:n,1:m0)
+          !call mkl_zcsrmm('N', n, fpm(25), n, (1.0d0,0.0d0), matdescra, sb, jsb, isb, isb(2), X(1,fpm(24)), n, (0.0d0,0.0d0), work(1,fpm(24)), n)
 
 
        end select

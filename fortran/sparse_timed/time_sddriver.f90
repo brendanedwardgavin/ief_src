@@ -112,6 +112,8 @@ totaltime=elapsed_time(startcount,endcount)
    !print out timing stuff:
    call printTimes()
 
+    !print out minimum distance of contour points from spectrum:
+    call printMinCpDist(E)
 end program
 
 

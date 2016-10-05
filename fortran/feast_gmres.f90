@@ -100,13 +100,14 @@ end subroutine blockGivens
 
 
 
-subroutine blockGMRESarnoldi(UPLO,n,m,dsa,isa,jsa,kmax,restarts,Brhs,Xlhs,eps,loops,blockstart)
+subroutine blockGMRESarnoldi(UPLO,n,m,dsa,isa,jsa,ze,kmax,restarts,Brhs,Xlhs,eps,loops,blockstart)
 use rundata
 implicit none
 
 character :: UPLO
 integer :: n,m,kmax,restarts,loops,blockstart
 integer, dimension(*) :: isa,jsa
+complex (kind=kind(0.0d0)) :: ze
 complex (kind=kind(0.0d0)), dimension(*) :: dsa
 complex (kind=kind(0.0d0)), dimension(n,m) :: Brhs,Xlhs
 double precision :: eps !target residual error
@@ -162,7 +163,7 @@ do i=1,restarts
         loops=loops+1
         !next arnoldi step
         call system_clock(count=tc1)
-        call blockArnoldiIt(UPLO,n,m,dsa,isa,jsa,kmax,j,V,H,Bsm)
+        call blockArnoldiIt(UPLO,n,m,dsa,isa,jsa,ze,kmax,j,V,H,Bsm)
         call system_clock(count=tc2)
         arnolditime=arnolditime+elapsed_time(tc1,tc2)
 
@@ -292,13 +293,14 @@ end subroutine blockGMRESarnoldi
 
 
 
-subroutine blockArnoldiIt(UPLO,n,m,dsa,isa,jsa,k,k0,V,H,Bsm)
+subroutine blockArnoldiIt(UPLO,n,m,dsa,isa,jsa,ze,k,k0,V,H,Bsm)
 use rundata
 implicit none
 
 character :: UPLO
 integer :: n,m,k,k0
 integer, dimension(*) :: isa,jsa
+complex (kind=kind(0.0d0)) :: ze
 complex (kind=kind(0.0d0)), dimension(*) :: dsa
 complex (kind=kind(0.0d0)), dimension(n,*) :: V
 complex (kind=kind(0.0d0)), dimension((k+1)*m,*) ::H,Bsm
@@ -376,7 +378,9 @@ end if
 
 !Vnew=A*V0(:,(i-1)*m+1:i*m)
 call system_clock(count=tc1)
-call mkl_zcsrmm('N', n, m, n, (1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), V(1,(k0-1)*m+1), n, (0.0d0,0.0d0), Vnew, n)
+Vnew=V(:,(k0-1)*m+1:k0*m)
+call mkl_zcsrmm('N', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), V(1,(k0-1)*m+1), n, ze, Vnew, n)
+!call mkl_zcsrmm('N', n, m, n, (1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), V(1,(k0-1)*m+1), n, (0.0d0,0.0d0), Vnew, n)
 call system_clock(count=tc2)
 mvtime=mvtime+elapsed_time(tc1,tc2)
 nmatvec(feastit,cpnum)=nmatvec(feastit,cpnum)+m
@@ -1814,6 +1818,7 @@ implicit none
     call system_clock(count=tc1)
     R=B(1:n,1:m)
     call mkl_zcsrmm('C', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), B, n, (1.0d0,0.0d0)*conjg(ze), R, n)
+    !call mkl_zcsrmm('C', n, m, n, (1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), B, n, (0.0d0,0.0d0), R, n)
     !R(1:n,1:m)=-1.0*B(1:n,1:m)
     call system_clock(count=tc2)
     nmatvec(feastit,cpnum)=nmatvec(feastit,cpnum)+m
@@ -1833,11 +1838,14 @@ implicit none
 
     do i=1,maxit
         its=its+1
+        
         !lambda=inv(P'*A'*A*P)*R'*R
         !-----T=A*P
-        T=P
+        
         call system_clock(count=tc1)
+        T=P
         call mkl_zcsrmm('N', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), P, n, ze, T, n) 
+        !call mkl_zcsrmm('N', n, m, n, (1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), P, n, (0.0d0,0.0d0), T, n)
         call system_clock(count=tc2)
         nmatvec(feastit,cpnum)=nmatvec(feastit,cpnum)+m
         mvtime=mvtime+elapsed_time(tc1,tc2)
@@ -1868,9 +1876,11 @@ implicit none
         gstime=gstime+elapsed_time(tc1,tc2)
 
         !Rnew=A'*D 
-        Rnew=D
+        
         call system_clock(count=tc1)
+        Rnew=D
         call mkl_zcsrmm('C', n, m, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), D, n, conjg(ze), Rnew, n)
+        !call mkl_zcsrmm('C', n, m, n, (1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), D, n, (0.0d0,0.0d0), Rnew, n)
         call system_clock(count=tc2)
         nmatvec(feastit,cpnum)=nmatvec(feastit,cpnum)+m
         mvtime=mvtime+elapsed_time(tc1,tc2)

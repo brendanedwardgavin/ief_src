@@ -90,6 +90,23 @@ module rundata
         print *,'TOTAL TIME: ',totaltime
     end subroutine printTimes
 
+    subroutine printMinCpDist(E)
+        implicit none
+        double precision, dimension(m0d) :: E
+        double precision :: mindist,dist
+        integer :: i,j
+
+        print *,''
+        do i=1,ncp
+            mindist=abs(cpval(i)-dcmplx(E(1)))
+            do j=2,m0d
+               dist=abs(cpval(i)-dcmplx(E(j))) 
+               if(dist>mindist) mindist=dist
+            end do
+            print *,'cp ',i,mindist
+        end do
+    end subroutine
+
     subroutine savedata(feastloop)
         implicit none 
         integer :: feastloop
