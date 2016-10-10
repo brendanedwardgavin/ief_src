@@ -79,7 +79,6 @@
   end subroutine dfeast_scsrevit
 
 
-
 subroutine dfeast_scsrgvxit(UPLO,N,sa,isa,jsa,sb,isb,jsb,fpm,epsout,loop,Emin,Emax,M0,E,X,mode,res,info,Zne,Wne)
     !  Purpose 
     !  =======
@@ -400,17 +399,22 @@ call wallocate_1d(nres,M0,infoloc) ! dummy
     
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+    if(fpm(54)==0) print *,'WARNING: using default 1d-2*epsout for linear system accuracy. Set feastparam(54)/=0 to change this.'
+
     do while (ijob/=0)
-       call dfeast_srcix(ijob,N,Ze,work,workc,Aq,Sq,fpm,epsout,loop,Emin,Emax,M0,E,X,mode,res,info,Zne,Wne)    
-       
+       call dfeast_myrcix(ijob,N,Ze,work,workc,Aq,Sq,fpm,epsout,loop,Emin,Emax,M0,E,X,mode,res,info,Zne,Wne)    
+       !call dfeast_srcix(ijob,N,Ze,work,workc,Aq,Sq,fpm,epsout,loop,Emin,Emax,M0,E,X,mode,res,info,Zne,Wne)    
+
         feastit=loop
         if(oldloop .ne. loop) then !new iteration
             call system_clock(count=tc1)
             eigtime(oldloop)=elapsed_time(startcount,tc1)
+            print *,''
+            print *,'Time elapsed ',eigtime(oldloop)
             eigres(oldloop)=epsout
             !call quicksort(E,1,m0)
-            ritzvals(oldloop,1:m0)=E(1:m0)
-            eigresall(oldloop,1:m0)=res(1:m0)
+            !ritzvals(oldloop,1:m0)=E(1:m0)
+            !eigresall(oldloop,1:m0)=res(1:m0)
             oldloop=loop
         end if
         
@@ -484,7 +488,13 @@ call wallocate_1d(nres,M0,infoloc) ! dummy
               end if
 
               if(epsout <=1.0d-1 .and. loop>0) then
-                  lintargeterror=1d-2*epsout
+                  if(fpm(54)==0) then
+                      lintargeterror=1.0d-2*epsout
+                  else
+                      !lintargeterror=epsout*10.0d0**(-1.0d0*fpm(54))
+                      lintargeterror=epsout/(1.0d0*fpm(54))
+
+                  end if
               else
                   lintargeterror=1d-1
               endif          
@@ -548,7 +558,7 @@ call wallocate_1d(nres,M0,infoloc) ! dummy
                     linit(feastit,cpnum,1+(i-1)*fpm(53):m0)=linloops
                 end if
               end if
-
+              if(cpnum==1) print *,''
               print *, 'lin sys',cpnum,sum(linit(feastit,cpnum,1:m0))/m0
               workc=ztempmat
         end if
@@ -622,5 +632,817 @@ call wallocate_1d(nres,M0,infoloc) ! dummy
     endif
 
   end subroutine dfeast_scsrgvxit
+
+
+
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+subroutine dfeast_myrcix(ijob,N,Ze,work,workc,Aq,Sq,fpm,epsout,loop,Emin,Emax,M0,lambda,q,mode,res,info,Zne,Wne)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+use rundata
+!  Purpose 
+  !  =======
+  !  FEAST RCI (Reverse Communication Interfaces) - Includes option for custom integration nodes/weight
+  !  Solve generalized Aq=lambda Bq eigenvalue problems
+  !  
+  !  A REAL SYMMETRIC, B SYMMETRIC POSITIVE DEFINITE (or B Identity) 
+  !  DOUBLE PRECISION version 
+  ! 
+  !  Arguments
+  !  =========
+  !
+  !  ijob       (input/output) INTEGER :: ID of the RCI
+  !                            INPUT on first entry: ijob=-1 
+  !                            OUTPUT Return values (0,10,20,21,30,40)-- see FEAST documentation
+  !  N          (input)        INTEGER: Size system
+  !  Ze         (output)       COMPLEX DOUBLE PRECISION        : Integration node
+  !  work       (input/output) REAL DOUBLE PRECISION (N,M0)   :  Workspace 
+  !  workc      (input/output) COMPLEX DOUBLE PRECISION (N,M0):  Workspace 
+  !  Aq,Sq      (input/output) REAL DOUBLE PRECISION (M0,M0)  :  Workspace for Reduced Eigenvalue System
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!! LIST of FEAST ARGUMENTS COMMON TO ALL FEAST INTERFACES
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  !  fpm     (input/output)    INTEGER(*) : FEAST parameters (see FEAST documentation)
+  !  epsout     (output)       REAL DOUBLE PRECISION : Error on the trace
+  !  loop       (output)       INTEGER : # of iterative loop to reach convergence 
+  !  Emin,Emax  (input)        REAL DOUBLE PRECISION: search interval
+  !  M0         (input/output) INTEGER: Size subspace
+  !  lambda     (output)       REAL DOUBLE PRECISION(M0)   : Eigenvalues -solution
+  !  q          (input/output) REAL DOUBLE PRECISION(N,M0) : 
+  !                                                       On entry: subspace initial guess if fpm(5)=1 
+  !                                                       On exit : Eigenvectors-solution
+  !  mode       (output)       INTEGER : # of eigenvalues found in the search interval
+  !  res        (output)       REAL DOUBLE PRECISION(M0) : Relative Residual of the solution (1-norm)
+  !                                                               
+  !  info       (output)       INTEGER: Error handling (0: successful exit) -- see FEAST documentation
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!! LIST of ARGUMENTS FOR EXPERT ROUTINE 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  !  Zne        (input)        COMPLEX DOUBLE PRECISION(fpm(2)): Custom Integration nodes
+  !  Wne        (input)        COMPLEX DOUBLE PRECISION(fpm(2)): Custom Integration weights
+  !                
+  !                            Expert comment: if fpm(29)=1 Zne, Wne have already been generated using default contour   
+  !===========================================================================================================
+  ! Eric Polizzi 2009-2015
+  ! ====================================================================
+
+  implicit none
+  !-------------------------------------
+#ifdef MPI
+  include 'mpif.h'
+#endif
+  !-------------------------------------
+  include "f90_noruntime_interface.fi"
+  integer :: ijob,N,M0
+  complex(kind=(kind(1.0d0))) :: Ze
+  double precision, dimension(N,*) ::work
+  complex(kind=(kind(1.0d0))),dimension(N,*):: workc
+  integer,dimension(*) :: fpm
+  double precision,dimension(M0,*):: Aq,Sq
+  double precision :: epsout 
+  integer :: loop
+  double precision :: Emin,Emax
+  double precision,dimension(*)  :: lambda
+  double precision,dimension(N,*):: q
+  integer :: mode
+  double precision,dimension(*) :: res
+  integer :: info
+  complex(kind=(kind(1.0d0))),dimension(*) :: Zne,Wne
+  !! parameters
+  double precision, Parameter :: pi=3.1415926535897932d0
+  double precision, Parameter :: DONE=1.0d0, DZERO=0.0d0
+  complex(kind=(kind(1.0d0))),parameter :: ONEC=(DONE,DZERO)
+  complex(kind=(kind(1.0d0))),parameter :: ZEROC=(DZERO,DZERO)
+  double precision, parameter :: ba=-pi/2.0d0, ab=pi/2.0d0
+  integer(8),parameter :: fout =6
+  !! variable for FEAST
+  integer :: i,e,j,k
+  integer,dimension(4) :: iseed
+  double precision :: theta,r,Emid
+  complex(kind=(kind(1.0d0))) :: zxe,zwe,aux
+  double precision, dimension(:,:),pointer :: Sqo
+  integer, dimension(:),pointer :: fpm_default
+  logical :: testconv
+  double precision :: trace
+  !! Lapack variable (reduced system)
+  character(len=1) :: JOBZ,UPLO
+  double precision, dimension(:),pointer :: work_loc,work_loc2
+  integer :: lwork_loc,info_lap,infoloc
+  !! MPI compatibility variables
+  integer :: rank,code,nb_procs,NEW_COMM_WORLD
+
+  rank=0
+  nb_procs=1
+  !----------------------------------------------
+#ifdef MPI
+  NEW_COMM_WORLD=fpm(9)
+  call MPI_COMM_RANK(NEW_COMM_WORLD,rank,code)
+  call MPI_COMM_SIZE(NEW_COMM_WORLD,nb_procs,code)
+  if (rank/=0) fpm(1)=0 ! comment only in rank 0 if any
+#endif
+  !---------------------------------------------
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!! Initialization!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  if (ijob==-1) then 
+     info=0 ! default value
+     if (fpm(1)==1) then
+        call wwrite_n(fout)
+        call wwrite_s(fout, '***********************************************')  
+        call wwrite_n(fout) 
+        call wwrite_s(fout, '*********** FEAST- BEGIN **********************')
+        call wwrite_n(fout) 
+        call wwrite_s(fout, '***********************************************')  
+        call wwrite_n(fout)
+        call wwrite_s(fout, 'Routine DFEAST_S{}{}')
+        if (fpm(29)==0) call wwrite_s(fout,'X') 
+        call wwrite_n(fout)
+!!!!!!!!!!!! Print the FEAST parameters which has been changed from default
+        call wwrite_s(fout, 'List of input parameters fpm(1:64)-- if different from default')
+        call wwrite_n(fout)
+
+        call wallocate_1i(fpm_default,64,infoloc)
+        call feastinit(fpm_default)
+        do i=1,19
+           if (fpm(i)/=fpm_default(i)) then
+              call wwrite_s(fout, '   fpm(')
+              call wwrite_i(fout, i)
+              call wwrite_s(fout, ')=')
+              call wwrite_i(fout, fpm(i))
+              call wwrite_n(fout)
+           endif
+        enddo
+        call wdeallocate_1i(fpm_default)
+
+        call wwrite_s(fout, 'Search interval [')
+        call wwrite_d(fout,Emin)
+        call wwrite_s(fout, '; ')
+        call wwrite_d(fout,Emax)
+        call wwrite_s(fout, ']')
+        call wwrite_n(fout)
+     end if
+     call check_feast_fpm_input(fpm,info)
+     call dcheck_feast_srci_input(Emin,Emax,M0,N,info)
+
+     if (info/=0) fpm(21)=100 ! The End
+  
+!!!!!!!!!!!!!!!!
+     IF (info==0) then
+        fpm(22)=fpm(2) ! only one half contour necessary
+        loop=0
+        if (fpm(1)==1) then
+           call wwrite_s(fout, 'Size system    ')  
+           call wwrite_t(fout) 
+           call wwrite_i(fout,N)
+           call wwrite_n(fout)
+           call wwrite_s(fout, 'Size subspace  ')  
+           call wwrite_t(fout) 
+           call wwrite_i(fout,M0)
+           call wwrite_n(fout)
+           call wwrite_s(fout, '#Linear systems')  
+           call wwrite_t(fout) 
+           call wwrite_i(fout,fpm(22))
+           call wwrite_n(fout)
+           call wwrite_s(fout, '-----------------------------------------------------------------------------------')
+           call wwrite_n(fout)
+           call wwrite_s(fout, '#Loop | #Eig  |       Trace           |     Error-Trace       |     Max-Residual')  
+           call wwrite_n(fout)
+           call wwrite_s(fout, '-----------------------------------------------------------------------------------')
+           call wwrite_n(fout)
+        endif
+        fpm(23)=min(M0,N) ! 'current M0' size (global value)
+        fpm(25)=fpm(23) !! 'current M0' size (by default)
+        fpm(24)=1  !! origin first column number of vector q for parallel mat-vec (default)
+        !----------------------------------------------
+#ifdef MPI
+        if (fpm(23)/nb_procs>=1) then ! criteria for parallelism of mat-vec
+           fpm(25)=fpm(23)/nb_procs ! local size of 'current M0'
+           if (rank==nb_procs-1) fpm(25)=fpm(25)+fpm(23)-(fpm(23)/nb_procs)*nb_procs 
+           fpm(24)=1+rank*(fpm(23)/nb_procs) ! local origin of first column for vector q for parallel mat-vec 
+        end if
+#endif
+        !-----------------------------------------------
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        fpm(21)=1 ! prepare reentry
+        if (fpm(5)==0) then !!! random vectors (option 2 in DLARNV)
+           iseed=(/56,890,3456,2333/)
+           ! copy work into q for multiplication by B matrix, if stochastic estimate is "on" 
+           if (fpm(14)==2) then
+              call DLARNV(2,iseed,N*fpm(23),q(1,1)) 
+           else
+              call DLARNV(2,iseed,N*fpm(23),work(1,1)) 
+           endif
+        end if
+
+        if ((fpm(5)==1).or.(fpm(14)==2)) then !!!!!! q is the initial guess
+           !----------------------------------------
+#ifdef MPI
+           work(1:N,1:fpm(23))=DZERO 
+#endif
+           !------------------------------------------
+           ijob=40 !! B*q=>work
+           return
+        end if
+     end IF ! info=0
+!!!!!!!!!!!!!!
+  end if   !ijob=-1
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!! CONTOUR INTEGRATION
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+  IF (fpm(21)==1) then !! we initialize a new contour integration
+     !------------------------------------------------------------------------
+#ifdef MPI
+     if ((loop>0).or.(fpm(5)==1).or.(fpm(14)==2)) then        
+        if (fpm(23)/nb_procs>=1) call MPI_ALLREDUCE(MPI_IN_PLACE,work,N*fpm(23),MPI_DOUBLE_PRECISION,MPI_SUM,NEW_COMM_WORLD,code)
+     endif
+
+     if ((fpm(29)==1).and.(fpm(16)==2)) then ! Zolotarev 
+        if ((loop>0).and.(fpm(23)/nb_procs>=1)) call MPI_ALLREDUCE(MPI_IN_PLACE,q,N*fpm(23),MPI_DOUBLE_PRECISION,MPI_SUM,NEW_COMM_WORLD,code)
+     end if
+#endif
+     !------------------------------------------------------------------------
+
+     if ((fpm(29)==1).and.(fpm(16)==2)) then !! Zolotarev
+        call dset_feast_zolotarev(fpm(2),0,zxe,zwe)
+        !   r=(Emax-Emin)/2.0d0
+        if ((loop==0).and.(fpm(5)==0)) then 
+        !   !q(1:N,fpm(23))=-dble(zwe)*r*work(1:N,1:fpm(23)) 
+            q(1:N,1:fpm(23))=DZERO
+        else
+            if (rank==0) then
+             q(1:N,1:fpm(23))=-dble(zwe)*q(1:N,1:fpm(23))
+            else 
+             q(1:N,1:fpm(23))=DZERO
+            endif
+        end if
+     else
+        q(1:N,1:fpm(23))=DZERO
+     end if
+
+     fpm(20)=1
+     fpm(21)=2
+     ijob=-2 ! just initialization 
+  end IF
+
+
+!!!!!!!!!!!!
+  IF (fpm(21)==2) then !! we start or pursue the contour integration
+
+     IF (info==0) then !! will end up checking info errors returned by FEAST drivers
+        do e=fpm(20)+rank,fpm(22),nb_procs !!!! loop over the contour 
+
+           if (ijob==-2) then !!Factorize the linear system (complex) (zS-A)
+              Ze=Zne(e)
+              fpm(20)=e-rank
+              ijob=10 ! for fact
+              if ((loop==0).or.(fpm(22)>nb_procs)) return ! no need to factorize again if one linear system per processor
+           endif
+
+           if (ijob==10) then !!Solve the linear system (complex) (zS-A)q=v 
+              call ZLACP2( 'F', N, fpm(23),work , N, workc, N )
+              ijob=11 ! for solve
+              return
+           endif
+
+           if (ijob==11) then 
+              !! summation              
+              aux=2.0d0*Wne(e)            
+              !! aux has been multiplied by 2 to account for the 2 half-contours
+              q(1:N,1:fpm(23))=q(1:N,1:fpm(23))-dble(aux*workc(1:N,1:fpm(23))) 
+
+              ijob=-2 ! just for identification
+           end if
+        end do
+     end IF  !! info=0
+
+     !------------------------------------------------
+#ifdef MPI
+     call MPI_BCAST(info,1,MPI_INTEGER,0,NEW_COMM_WORLD,code)
+#endif
+     !-----------------------------------------------  
+     if (info/=0) fpm(21)=100 ! the end
+
+     if (info==0) then
+        fpm(21)=4 
+        !------------------------------------------------
+#ifdef MPI
+        call MPI_ALLREDUCE(MPI_IN_PLACE,q(1,1),N*fpm(23),MPI_DOUBLE_PRECISION,MPI_SUM,NEW_COMM_WORLD,code)
+#endif
+        !-----------------------------------------------  
+     end if
+  end IF     ! fpm(21)==1
+!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+  if ((fpm(21)==4).and.(fpm(14)==1)) then !! only q vectors has been computed and is returned
+     info=4
+     if (info/=0) fpm(21)=100 ! The End
+  end if
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!! Stochastic estimates
+  if ((fpm(21)==4).and.(fpm(14)==2)) then !! only q is returned with stochastic estimation in res
+     iseed=(/56,890,3456,2333/)
+     call DLARNV(2,iseed,N*fpm(23),work(1,1)) 
+     call DGEMM('T','N',fpm(23),fpm(23),N,-DONE,work,N,q,N,DZERO,Aq,M0) ! projection
+     call DGEMM('T','N',fpm(23),fpm(23),N,DONE,work,N,work,N,DZERO,Sq,M0) ! normalization
+     theta=DZERO
+     do i=1,fpm(23)
+        theta=theta+Aq(i,i)/Sq(i,i)
+        res(i)=abs(theta*(N/(DONE*i)))
+     enddo
+     mode=int(real(res(fpm(23))))+1
+     info=5
+     if (info/=0) fpm(21)=100 ! The End
+  end if
+
+!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!! Form the reduced eigenvalue problem
+!!!!!!! Aq xq=eq Bq xq     with Aq=Q^TAQ Bq=Q^TBQ
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+!!!!!!!!!form  Bq=> Bq=Q^T B Q
+  if (fpm(21)==4) then 
+#ifdef MPI 
+     work(1:N,1:fpm(23))=DZERO
+#endif
+     fpm(21)=5 ! preparing reenty
+     ijob=40 
+     return! mat-vec B*q => work
+  end if
+
+
+  if (fpm(21)==5) then
+     !----------------------------------------------
+#ifdef MPI
+     Sq(1:M0,1:fpm(23))=DZERO
+#endif
+     !-------------------------------------------------
+
+     call DGEMM('T','N',fpm(23),fpm(25),N,DONE,q(1,1),N,work(1,fpm(24)),N,DZERO,Sq(1,fpm(24)),M0) 
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!! Spurious test 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+     mode=0
+     if (loop>0) then
+        do i=fpm(24),fpm(24)+fpm(25)-1
+           if (res(i)==DONE) then ! indicator for being inside the search interval
+              if (abs(sqrt(abs(Sq(i,i)))-lambda(i))/sqrt(abs(Sq(i,i)))<0.1d0) mode=mode+1
+           endif
+        enddo
+     endif
+!!!!!!!!!!!!!!!!!!
+#ifdef MPI
+     call MPI_ALLREDUCE(MPI_IN_PLACE,mode,1,MPI_INTEGER,MPI_SUM,NEW_COMM_WORLD,code)
+#endif
+!!!!!!!!!!!!!!!!!!
+     fpm(21)=6
+  end if
+
+
+!!!!!!!!!form Aq=> Aq=Q^T A Q 
+  if (fpm(21)==6) then
+     !------------------------------------------------
+#ifdef MPI 
+     work(1:N,1:fpm(23))=DZERO
+#endif
+     fpm(21)=7 ! preparing reentry
+     ijob=30 
+     return  ! mat-vec A*q => work
+  endif
+
+
+  if (fpm(21)==7) then 
+     !------------------------------------------------
+#ifdef MPI 
+     Aq(1:M0,1:fpm(23))=DZERO
+#endif
+     !-------------------------------------------------
+     call DGEMM('T','N',fpm(23),fpm(25),N,DONE,q(1,1),N,work(1,fpm(24)),N,DZERO,Aq(1,fpm(24)),M0) !q^tAq
+     fpm(21)=8
+  endif
+
+
+  if (fpm(21)==8) then
+
+     !---------------------------------------- !(Aq,Sq known to all processors) 
+#ifdef MPI
+     if (fpm(23)/nb_procs>=1) then
+        call MPI_ALLREDUCE(MPI_IN_PLACE,Aq(1,1),M0*fpm(23),MPI_DOUBLE_PRECISION,MPI_SUM,NEW_COMM_WORLD,code)
+        call MPI_ALLREDUCE(MPI_IN_PLACE,Sq(1,1),M0*fpm(23),MPI_DOUBLE_PRECISION,MPI_SUM,NEW_COMM_WORLD,code)
+     end if
+#endif
+     !---------------------------------------
+
+     !---------------------------------------
+     if (fpm(12)==1) then ! customize eigenvalue solver
+        fpm(21)=9 ! preparing reentry - could return new value of M0 in fpm(23) if reduced subspace is needed
+        ijob=50
+        return
+     endif
+  endif
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!! Solve the reduced eigenvalue problem
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+  if (fpm(21)==8) then
+     ! if using FEAST-MPI ==> solve on a single proc
+     if (rank==0) then
+        JOBZ='V'
+        UPLO='L'
+        info_lap=1 ! initialization
+        i=1
+        LWORK_LOC=3*fpm(23)-1 !! for lapack eig reduced system
+        call wallocate_1d(WORK_LOC,LWORK_LOC,infoloc)
+        if (infoloc/=0) info=-1
+
+
+        do while ((info_lap/=0).and.(info==0))
+           i=i+1
+           if (i==10) info=-3 ! arbitrary maximum
+           call wallocate_2d(Sqo,fpm(23),fpm(23),infoloc)
+           if (infoloc/=0) info=-1
+           call DLACPY( 'F', fpm(23), fpm(23),Sq, M0, Sqo, fpm(23) )
+           call DSYGV(1, JOBZ, UPLO, fpm(23),Aq,M0,Sqo,fpm(23),lambda,work_loc,Lwork_loc,INFO_lap)
+            ritzvals(feastit,1:m0)=lambda(1:m0)
+           if ((info_lap<=fpm(23)).and.(info_lap/=0)) info=-3
+           if (info_lap>fpm(23)) then !! Sqo is not spd (a posteriori resize subspace)
+              fpm(23)=info_lap-fpm(23)-1 
+              if (fpm(1)==1) then
+                 call wwrite_s(fout, 'Resize subspace')  
+                 call wwrite_t(fout) 
+                 call wwrite_i(fout,fpm(23))
+                 call wwrite_n(fout)
+              end if
+           end if
+           call wdeallocate_2d(Sqo)
+        end do
+        call wdeallocate_1d(work_loc) 
+     end if !(rank 0)
+     !-------------------------------- !(info common to all processors)
+#ifdef MPI
+     call MPI_BCAST(info,1,MPI_INTEGER,0,NEW_COMM_WORLD,code)
+#endif
+     !--------------------------------
+     if (info/=0) fpm(21)=100 ! the end
+
+     if (info==0) then
+        fpm(25)=fpm(23)!! current M0 size (by default) -- global
+        fpm(24)=1  !! origin first column number of vector q for parallel mat-vec (default)
+        !----------------------------------------!(Aq==> vectors, lambda and fpm(23), known to all processors) 
+#ifdef MPI 
+        call MPI_BCAST(fpm(23),1,MPI_INTEGER,0,NEW_COMM_WORLD,code)
+        call MPI_BCAST(Aq,fpm(23)*M0,MPI_DOUBLE_PRECISION,0,NEW_COMM_WORLD,code)
+        call MPI_BCAST(lambda,fpm(23),MPI_DOUBLE_PRECISION,0,NEW_COMM_WORLD,code)
+        if (fpm(23)/nb_procs>=1) then ! criteria for parallelism of mat-vec
+           fpm(25)=fpm(23)/nb_procs ! local size of current M0
+           if (rank==nb_procs-1) fpm(25)=fpm(25)+fpm(23)-(fpm(23)/nb_procs)*nb_procs 
+           fpm(24)=1+rank*(fpm(23)/nb_procs) ! local origin of first column for vector q for parallel mat-vec 
+        end if
+#endif
+        !-----------------------------
+        fpm(21)=9
+     end if
+  end if !! fpm(21)=8
+
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!! Compute Ritz vectors X=Qxq  
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+  if (fpm(21)==9) then
+     call DLACPY( 'F', N, fpm(23),q , N, work, N ) 
+     !! option - non shifted
+#ifdef MPI 
+     q(1:N,1:fpm(23))=DZERO
+#endif
+     call DGEMM('N','N',N,fpm(25),fpm(23),DONE,work(1,1),N,Aq(1,fpm(24)),M0,DZERO,q(1,fpm(24)),N)
+  endif
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!! Compute Residual ||AX-lambda*BX||
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+  if (fpm(21)==9) then
+     fpm(21)=10 ! preparing reentry
+     ijob=30
+     return  ! mat-vec A*q => work
+  endif
+
+  if (fpm(21)==10) then
+     call ZLACP2( 'F', N, fpm(25),work(1,fpm(24)), N, workc(1,fpm(24)), N )
+     fpm(21)=11 ! preparing reentry
+     ijob=40
+     !----------------------------------------
+#ifdef MPI
+     work(1:N,1:fpm(23))=DZERO  !! work is also needed for outer-loop if any 
+#endif
+     !----------------------------------------
+     return  ! mat-vec S*q => work 
+  endif
+
+  if (fpm(21)==11) then
+     !----------------------------------------
+#ifdef MPI
+     res(1:fpm(23))=DZERO
+#endif
+     !-------- Absolute residual
+     do i=fpm(24),fpm(24)+fpm(25)-1
+           res(i)=sum(abs(dble(workc(1:N,i))-lambda(i)*work(1:N,i)))/sum(abs(max(abs(Emin),abs(Emax))*(work(1:N,i)))) 
+     end do
+     eigresall(feastit,fpm(24):fpm(24)+fpm(25)-1)=res(fpm(24):fpm(24)+fpm(25)-1)
+     !----------------------------------------
+#ifdef MPI 
+     if (fpm(23)/nb_procs>=1) call MPI_ALLREDUCE(MPI_IN_PLACE,res,fpm(23),MPI_DOUBLE_PRECISION,MPI_SUM,NEW_COMM_WORLD,code)
+#endif
+     !-----------------------------------------
+  end if
+
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!! Compute Trace / count eigenvalues (remove spurious if any)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+  if (fpm(21)==11) then
+     k=0
+     trace=DZERO
+     theta=DZERO
+!!! count how many eigenvalues have converged + trace + max residual
+     do i=1,fpm(23)
+        if ((lambda(i)>Emin).and.(lambda(i)<Emax)) then ! inside the search interval
+           k=k+1 ! number of eigenvalues (could include spurious)
+           trace=trace+lambda(i)
+           if (res(i)>theta) theta=res(i) ! max residual 
+        endif
+     enddo
+
+!!!!!!!! remove spurious if any       
+     if ((mode==0).and.(k>0)) mode=k ! wait before looking into mode 
+     ! Rq: if all eigenvalues k are spurious...FEAST will not converge
+     if (mode<k) then
+        do j=1,k-mode
+           theta=DZERO
+           e=1
+           do i=1,fpm(23)
+              if ((lambda(i)>Emin).and.(lambda(i)<Emax)) then ! inside the search interval
+                 if (res(i)>theta) then
+                    e=i
+                    theta=res(i) !max
+                 endif
+              end if
+           enddo
+           trace=trace-lambda(e) ! update trace
+           res(e)=-DONE !spurious
+        end do
+!!! max residual
+        theta=DZERO
+        do i=1,fpm(23)
+           if ((lambda(i)>Emin).and.(lambda(i)<Emax)) then ! inside the search interval
+              if (res(i)>theta) theta=res(i)
+           end if
+        enddo
+     end if
+
+     if (mode==0) info=1  ! no eigenvalue detected in the interval
+     if (loop>1) then ! wait second iteration (spurious related)
+        if ((mode==M0).and.(mode/=N)) info=3 ! size subspace too small
+     endif
+     if (info/=0) fpm(21)=100 ! The End
+  end if
+
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!! Check FEAST Convergence
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!       
+
+  if (fpm(21)==11) then
+     testconv=.false. ! initialization
+
+     !! trace convergence
+     if (loop==0) epsout=DONE
+     if (loop>0) then
+        epsout=(abs(trace-epsout))/max(abs(Emin),abs(Emax))           
+        if ((fpm(6)==0).and.(log10(epsout)<(-fpm(3)))) testconv=.true.
+     end if
+
+     !! residual convergence
+     if ((fpm(6)/=0).and.(log10(theta)<(-fpm(3)))) testconv=.true.
+
+     !! Two loops minimum if spurious are found
+     if ((loop<=1).and.(k>mode)) testconv=.false.
+
+     if (fpm(1)==1) then
+        call wwrite_i(fout,loop)
+        call wwrite_t(fout) 
+        call wwrite_i(fout,mode)
+        call wwrite_t(fout)
+        call wwrite_d(fout,trace)
+        call wwrite_t(fout) 
+        call wwrite_d(fout,epsout)
+        call wwrite_t(fout) 
+        call wwrite_d(fout,theta)
+        call wwrite_n(fout) 
+     end if
+
+     if (.not.testconv) then
+        epsout=trace
+        if (loop==fpm(4)) then
+           info=2 ! FEAST did not converge (#loop reaches maximum)
+           testconv=.true. ! return final eigenvector anyway
+        endif
+     endif
+
+    !make epsout be the eigenvector residual rather than the trace residual`    
+     if (fpm(6)/=0) then 
+         epsout=theta
+     end if
+ 
+  end if
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!! FEAST exit IF Convergence - FEAST iteration IF NOT 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!            
+
+  if (fpm(21)==11) then
+
+     if (.not.testconv) then !!! need FEAST refinement loop
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!! rational function for the inner eigenvalues
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        res(1:fpm(23))=DZERO ! temp indicator for being inside the contour
+        call wallocate_1d(work_loc,fpm(23),infoloc)
+        call dfeast_rationalx(Zne,Wne,fpm(2),lambda,fpm(23),work_loc)
+        if ((fpm(29)==1).and.(fpm(16)==2)) then ! zolotarev case
+        call dset_feast_zolotarev(fpm(2),0,zxe,zwe)
+        work_loc(1:fpm(23))=work_loc(1:fpm(23))+zwe
+        endif
+        do i=1,fpm(23)
+           if ((lambda(i)>Emin).and.(lambda(i)<Emax))  res(i)=1.0d0
+           lambda(i)=work_loc(i)
+        enddo
+        call wdeallocate_1d(work_loc)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+!!! Remark: q and work=S*q is known already, using FEAST-MPI work and q are already distributed
+
+
+        fpm(21)=1   ! prepare reentry- reloop (with contour integration)
+        !fpm(21)=4 ! reloop (without contour integration) -in this case work=q (actually does not need "work")
+        loop=loop+1
+        ijob=-2 ! do nothing
+        return  
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+     else    !!!!!!! final eigenvectors/eigenvalues
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#ifdef MPI       
+        if (fpm(23)/nb_procs>=1) call MPI_ALLREDUCE(MPI_IN_PLACE,q,N*fpm(23),MPI_DOUBLE_PRECISION,MPI_SUM,NEW_COMM_WORLD,code)
+#endif
+
+!!! reorder (shift) lambda, eigenvector and residual
+        call DLACPY( 'F', N, fpm(23),q , N, work, N ) 
+        call wallocate_1d(work_loc,fpm(23),infoloc)
+        call wallocate_1d(work_loc2,fpm(23),infoloc)
+        call DCOPY(fpm(23),lambda , 1, work_loc, 1 )
+        call DCOPY(fpm(23),res , 1, work_loc2, 1 )
+        q(1:N,1:fpm(23))=DZERO
+        e=0
+        j=0
+        k=0
+        do i=1,fpm(23)
+           if ((work_loc(i)>Emin).and.(work_loc(i)<Emax)) then ! inside the search interval
+              if (work_loc2(i)/=-DONE) then ! spurious 
+                 e=e+1
+                 q(1:N,e)=work(1:N,i)
+                 lambda(e)=work_loc(i)
+                 res(e)=work_loc2(i)
+              endif
+           else
+              j=j+1
+              q(1:N,mode+j)=work(1:N,i)
+              lambda(mode+j)=work_loc(i)
+              res(mode+j)=work_loc2(i)
+           end if
+           if (work_loc2(i)==-DONE) then ! spurious at the end
+              k=k+1
+              q(1:N,fpm(23)-k+1)=work(1:N,i)
+              lambda(fpm(23)-k+1)=work_loc(i)
+              res(fpm(23)-k+1)=work_loc2(i)
+           endif
+        enddo
+        call wdeallocate_1d(work_loc)
+        call wdeallocate_1d(work_loc2)
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!
+        M0=fpm(23)  ! update value of M0 (new subspace)
+        fpm(21)=100 ! The End
+
+     end if ! test convergence
+  end if
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+  if (fpm(21)==100) then !! THE END (ijob=0) 
+     ijob=0 !! exit FEAST
+
+     if (fpm(1)==1) then !! Print  Information
+
+        if (info>=200) then
+           call wwrite_s(fout, 'PROBLEM with input parameters')
+           call wwrite_n(fout) 
+        end if
+
+        if ((info>100).and.(info<200)) then
+           call wwrite_s(fout, 'PROBLEM with FEAST array parameters')
+           call wwrite_n(fout) 
+        end if
+
+        if (info==-3) then
+           call wwrite_s(fout, 'ERROR with reduced system')  
+           call wwrite_n(fout) 
+        end if
+
+        if (info==-2) then
+           call wwrite_s(fout, 'ERROR from Inner Linear System Solver in FEAST driver')  
+           call wwrite_n(fout) 
+        end if
+
+        if (info==-1) then
+           call wwrite_s(fout, 'ERROR with Internal memory allocation')  
+           call wwrite_n(fout) 
+        end if
+
+        if (info==1) then
+           call wwrite_s(fout, '==>WARNING: No eigenvalue has been found in the proposed search interval')
+           call wwrite_n(fout)
+        endif
+
+        if (info==3) then
+           call wwrite_s(fout, '==>WARNING: Size subspace M0 too small')  
+           call wwrite_n(fout)
+        end if
+
+        if (info==4) then
+           call wwrite_s(fout, '==>WARNING: Only the subspace has been returned')  
+           call wwrite_n(fout)
+        end if
+
+        if (info==5) then
+           call wwrite_s(fout, '==>WARNING: Only stochastic estimation of #eigenvalues returned')  
+           call wwrite_n(fout)
+        end if
+
+        if (info==2) then
+           call wwrite_s(fout, '==>WARNING: FEAST did not converge "yet" (#loop reaches maximum allowed)')  
+           call wwrite_n(fout)
+        end if
+
+        if (info==0) then
+           call wwrite_s(fout, '==>FEAST has successfully converged (to desired tolerance)')  
+           call wwrite_n(fout) 
+        else
+           call wwrite_s(fout, '==>INFO code = ') 
+           call wwrite_i(fout,info)
+           call wwrite_n(fout)
+        end if
+
+
+        call wwrite_s(fout, '***********************************************')  
+        call wwrite_n(fout) 
+        call wwrite_s(fout, '*********** FEAST- END*************************')
+        call wwrite_n(fout) 
+        call wwrite_s(fout, '***********************************************')  
+        call wwrite_n(fout) 
+        call wwrite_n(fout)
+     endif
+  end if
+
+end subroutine dfeast_myrcix
+
+
+
 
 

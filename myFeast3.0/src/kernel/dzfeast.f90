@@ -58,268 +58,6 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!! RCI ROUTINES !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-subroutine dfeast_gmres_noz(ijob,stateVars,Brhs,x,V,Av,Ax,ze,n,m,restarts,m0,xwork,workin,Av2)
-implicit none
-    include 'f90_noruntime_interface.fi'
-    
-    integer :: ijob,n,m,restarts,m0,i,j,k
-    integer, dimension(3)::stateVars
-
-    !ijob: RCI case to call when this routine returns
-    !n: dimension of linear sysmte
-    !m: number of right hand sides
-    !restarts: number of GMRES loops to do
-    !m0: number of krylov subspace blocks; total krylov subspace size is m*m0
-    !i,j,k: loop variables
-    !stateVars(1) = current state of routine
-    !stateVars(2) = index for outer loop
-    !stateVars(3) = index for inner loop, for building krylov subspace
-
-    double precision, dimension(n,*) :: xwork,workin !workspace variables
-    complex (kind=kind(0.0d0)), dimension(n,*) :: x,V,Ax,Av,Brhs,Av2
-    !x: solution to linear system
-    !V: Krylov subspace in which to solve linear system; has dimension m*m0
-    !Ax: A*x
-    !Av: A*V; storing this means we only have to do one matrix multiply instead of two
-    !Brhs: right hand sides
-    complex (kind=kind(0.0d0)) :: ze !complex shift for FEAST
-
-    !!lapack stuff:
-    complex (kind=kind(0.0d0)), dimension(:), pointer :: work,qrtau
-    integer :: lwork,info
-    integer, dimension(:),pointer :: ipiv
-
-    !!least squares stuff:
-    complex (kind=kind(0.0d0)), dimension(:,:), pointer :: Rs,Bs
- 
-    i=stateVars(2)
-    j=stateVars(3)
-    
-    !initialize routine when we start it
-    if (stateVars(1)==-1) then
-        V(1:n,1:m*m0)=0.0d0
-        Av(1:n,1:m*m0)=0.0d0    
-        Ax(1:n,1:m)=0.0d0
-        x(1:n,1:m)=0.0d0
-        stateVars(2)=1
-        stateVars(3)=1
-        stateVars(1)=1
-        xwork(1:n,1:m)=0.0d0
-    end if
-    
-
-    if (stateVars(1)==3) then !B*re(V(j)) for building V
-        !call zlacp2('F',n,m,workin(1,1),n,Av2(1,1),n)
-        !call zscal(n*m,ze,Av2(1,1),1)
-        !call zlacpy('F',n,m,Av2(1,1),n,V(1,m*j+1),n)
-        V(1:n,m*j+1:m*(j+1))=0.0d0
-        !V(1:n,m*j+1:m*(j+1))=workin(1:n,1:m)*(1.0d0,0.0d0)*ze
-        !xwork(1:n,1:m)=dimag(V(1:n,m*(j-1)+1:m*j)) !if we have B matrix
-        workin(1:n,1:m)=dimag(V(1:n,m*(j-1)+1:m*j)) !if we don't have B matrix
-        stateVars(1)=31        
-        ijob=40
-        return
-    end if
-
-    if (stateVars(1)==31) then !B*im(V(j)) for building V
-        !call zlacp2('F',n,m,workin(1,1),n,Av2(1,1),n)
-        !call zaxpy(n*m,ze*(0.0d0,1.0d0),Av2(1,1),1,V(1,m*j+1),1)
-        !V(1:n,m*j+1:m*(j+1))=V(1:n,m*j+1:m*(j+1))+Av2(1:n,1:m)*(0.0d0,1.0d0)*ze!workin(1:n,1:m)*(0.0d0,1.0d0)*ze
-        xwork(1:n,1:m)=dble(V(1:n,m*(j-1)+1:m*j))
-        stateVars(1)=32        
-        ijob=30
-        return
-    end if
-
-    if (stateVars(1)==32) then !A*re(V(j)) for V
-        call zlacp2('F',n,m,workin(1,1),n,Av2(1,1),n)
-        call zaxpy(n*m,(-1.0d0,0.0d0),Av2(1,1),1,V(1:n,m*j+1),1)
-
-        !V(1:n,m*j+1:m*(j+1))=V(1:n,m*j+1:m*(j+1))-workin(1:n,1:m)*(1.0d0,0.0d0)
-        xwork(1:n,1:m)=dimag(V(1:n,m*(j-1)+1:m*j))
-        stateVars(1)=33
-        ijob=30
-        return
-    end if
-
-    if (stateVars(1)==33) then !A*re(V(j)) for V
-        call zlacp2('F',n,m,workin(1,1),n,Av2(1,1),n)
-        call zaxpy(n*m,(0.0d0,-1.0d0),Av2(1,1),1,V(1,m*j+1),1)
-
-        !V(1:n,m*j+1:m*(j+1))=V(1:n,m*j+1:m*(j+1))-workin(1:n,1:m)*(0.0d0,1.0d0)
-    end if
-
-
-    if (stateVars(1)==4) then !B*re(V(j)) for Av
-        !call zlacp2('F',n,m,workin(1,1),n,Av2(1,1),n)
-        !call zscal(n*m,ze,Av2(1,1),1)
-        !call zlacpy('F',n,m,Av2(1,1),n,Av(1,m*(m0-1)+1),n)
-
-        Av(1:n,m*(m0-1)+1:m*m0)=0.0d0
-
-        !V(1:n,m*j+1:m*(j+1))=Av2(1:n,1:m)        
-        !Av(1:n,m*(m0-1)+1:m*m0)=Av2(1:n,1:m)
-                !Av(1:n,m*(m0-1)+1:m*m0)=workin(1:n,1:m)*(1.0d0,0.0d0)*ze
-        !xwork(1:n,1:m)=dimag(V(1:n,m*(m0-1)+1:m*m0)) !if we have B matrix
-        workin(1:n,1:m)=dimag(V(1:n,m*(m0-1)+1:m*m0)) !if we don't have B matrix
-        stateVars(1)=41
-        ijob=40
-        return
-    end if
-
-    if (stateVars(1)==41) then !B*im(V(j)) for Av
-        !call zlacp2('F',n,m,workin(1,1),n,Av2(1,1),n)
-        !call zaxpy(n*m,ze*(0.0d0,1.0d0),Av2(1,1),1,Av(1,(m*(m0-1)+1)),1)
-        !Av(1:n,m*(m0-1)+1:m*m0)=Av(1:n,m*(m0-1)+1:m*m0)+Av2(1:n,1:m)*(0.0d0,1.0d0)*ze!workin(1:n,1:m)*(0.0d0,1.0d0)*ze
-        xwork(1:n,1:m)=dble(V(1:n,m*(m0-1)+1:m*m0))
-        stateVars(1)=42
-        ijob=30
-        return
-    end if
-
-    if (stateVars(1)==42) then !A*re(V(j)) for Av
-        call zlacp2('F',n,m,workin(1,1),n,Av2(1,1),n)
-        call zaxpy(n*m,(-1.0d0,0.0d0),Av2(1,1),1,Av(1,m*(m0-1)+1),1)
-        !Av(1:n,m*(m0-1)+1:m*m0)=Av(1:n,m*(m0-1)+1:m*m0)-workin(1:n,1:m)*(1.0d0,0.0d0)
-        xwork(1:n,1:m)=dimag(V(1:n,m*(m0-1)+1:m*m0))
-        stateVars(1)=43
-        ijob=30
-        return
-    end if
-
-    if (stateVars(1)==43) then !A*im(V(j)) for Av
-        call zlacp2('F',n,m,workin(1,1),n,Av2(1,1),n)
-        call zaxpy(n*m,(0.0d0,-1.0d0),Av2(1,1),1,Av(1,m*(m0-1)+1),1)
-        !Av(1:n,m*(m0-1)+1:m*m0)=Av(1:n,m*(m0-1)+1:m*m0)-workin(1:n,1:m)*(0.0d0,1.0d0)
-    end if
-
-
-    do i=stateVars(2),restarts
-        stateVars(2)=i
-
-        !form right hand side from residual:
-        if (stateVars(1)==1) then 
-            V(1:n,1:m)=Brhs(1:n,1:m)-Ax(1:n,1:m)
-        end if        
-
-        !__________form Krylov subspace V_____________________
-        
-        do j=stateVars(3),m0-1
-            stateVars(3)=j
-            if (stateVars(1)==1 .or. stateVars(1)==4) then
-                !xwork(1:n,1:m)=dble(V(1:n,m*(j-1)+1:m*j)) !do this when we have a B matrix
-                workin(1:n,1:m)=dble(V(1:n,m*(j-1)+1:m*j)) !do this when we don't have B matrix
-                stateVars(1)=3     
-                ijob=40       
-                return
-            end if
-
-            if(stateVars(1)==33) then
-                stateVars(1)=4
-            end if
-        end do
-
-        if (m0==1) then
-            if (stateVars(1)==1) then
-                stateVars(1)=4
-            end if
-        end if
-
-        !____________form reduced system Av=A*V_______________
-
-        if (stateVars(1)==4) then
-            if (m0>1) then
-                Av(1:n,1:m*(m0-1))=V(1:n,m+1:m0*m)
-            end if
-
-            !xwork(1:n,1:m)=dble(V(1:n,m*(m0-1)+1:m*m0)) !if we have B matrix
-            workin(1:n,1:m)=dble(V(1:n,m*(m0-1)+1:m*m0)) ! if we don't have B matrix
-            ijob=40
-            return
-        end if
-
-        if (stateVars(1)==43) then
-            !____________Solve reduced system Av*x=r______________
-
-        
-            call wallocate_1i(ipiv,m*m0,info)
-            lwork=3*n
-            call wallocate_1z(work,lwork,info)
-            call wallocate_1z(qrtau,m0*m,info)
-
-            call wallocate_2z(Rs,m0*m,m0*m,info)
-            call wallocate_2z(Bs,m0*m,m,info)
-                        
-            !Av2(1:n,1:m0*m)=Av(1:n,1:m0*m)
-            call zlacpy('F',n,m*m0,Av(1,1),n,Av2(1,1),n)
-
-            !get QR factorization
-            call ZGEQRF( n, m0*m, Av2, n, qrtau, work, lwork, info )
-            if (info .ne. 0) then
-                print *,'Problem with least squares solution in GMRES'
-                print *,'ZGEQRF error info = ',info
-                stop
-            end if
-    
-            !get R matrix
-            !Rs(1:m*m0,1:m*m0)=Av2(1:m*m0,1:m*m0)
-            call zlacpy('F',m*m0,m*m0,Av2(1,1),n,Rs(1,1),m*m0)
-
-            !get Q matrix
-            call ZUNGQR(  n, m0*m, m0*m, Av2, n, qrtau, work, lwork, info )
-            if (info .ne. 0) then
-                print *,'Problem with least squares solution in GMRES'
-                print *,'ZUNGQR error info = ',info
-                stop
-            end if
-            
-            !form reduced right hand side matrix:
-            !use V(1:n,1:m) since V(1:n,1:m) = r = B-Ax is the right hand side
-            call ZGEMM('C','N',m*m0,m,n,(1.0d0,0.0d0),Av2,n,V(1:n,1:m),n,(0.0d0,0.0d0),Bs(1,1),m0*m)
-                        
-            !solve upper triangular system Rs*x=Q'*Bs
-            call ZTRTRS( 'U', 'N', 'N', m*m0, m, Rs, m*m0, Bs, m0*m, info )
-            if (info .ne. 0) then
-                print *,'Problem with least squares solution in GMRES'
-                print *,'ZTRTRS error info = ',info
-                stop
-            end if
-            
-            !update Ax
-            call ZGEMM('N','N',n,m,m*m0,(1.0d0,0.0d0),Av(1,1),n,Bs(1,1),m0*m,(1.0d0,0.0d0),Ax(1,1),n)
-            
-            !get full size solution x=V*xr
-            call ZGEMM('N','N',n,m,m*m0,(1.0d0,0.0d0),V(1,1),n,Bs(1,1),m0*m,(0.0d0,0.0d0),Av(1,1),n) 
-            
-            !update solution:
-            x(1:n,1:m)=x(1:n,1:m)+Av(1:n,1:m) !reusing Av to save some memory
-
-            call wdeallocate_1i(ipiv)
-            call wdeallocate_1z(work)
-            call wdeallocate_1z(qrtau)
-
-            call wdeallocate_2z(Rs)
-            call wdeallocate_2z(Bs) 
-            if  (i<restarts) then
-                !xwork(1:n,1:m)=dble(x(1:n,1:m)) !if we have B matrix
-                !workin(1:n,1:m)=dble(V(1:n,m*(m0-1)+1:m*m0)) !if we don't have B matrix
-                stateVars(1)=1
-            end if
-        end if
-    end do
-
-stateVars(1)=0!-2
-ijob=11
-!Brhs(1:n,1:m)=x(1:n,1:m)
-call zlacpy('F',n,m,x(1,1),n,Brhs(1,1),n)
-
-end subroutine dfeast_gmres_noz
-
-
-
-
-
-
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 subroutine dfeast_srcix(ijob,N,Ze,work,workc,Aq,Sq,fpm,epsout,loop,Emin,Emax,M0,lambda,q,mode,res,info,Zne,Wne)
@@ -848,8 +586,6 @@ subroutine dfeast_srcix(ijob,N,Ze,work,workc,Aq,Sq,fpm,epsout,loop,Emin,Emax,M0,
      do i=fpm(24),fpm(24)+fpm(25)-1
            res(i)=sum(abs(dble(workc(1:N,i))-lambda(i)*work(1:N,i)))/sum(abs(max(abs(Emin),abs(Emax))*(work(1:N,i)))) 
      end do
-    !epsout=maxval(res(1:mode))
-    
      !----------------------------------------
 #ifdef MPI 
      if (fpm(23)/nb_procs>=1) call MPI_ALLREDUCE(MPI_IN_PLACE,res,fpm(23),MPI_DOUBLE_PRECISION,MPI_SUM,NEW_COMM_WORLD,code)
@@ -904,10 +640,7 @@ subroutine dfeast_srcix(ijob,N,Ze,work,workc,Aq,Sq,fpm,epsout,loop,Emin,Emax,M0,
         enddo
      end if
 
-    if(loop>10) then
-        if (mode==0) info=1  ! no eigenvalue detected in the interval
-    end if
-
+     if (mode==0) info=1  ! no eigenvalue detected in the interval
      if (loop>1) then ! wait second iteration (spurious related)
         if ((mode==M0).and.(mode/=N)) info=3 ! size subspace too small
      endif
@@ -931,9 +664,7 @@ subroutine dfeast_srcix(ijob,N,Ze,work,workc,Aq,Sq,fpm,epsout,loop,Emin,Emax,M0,
      end if
 
      !! residual convergence
-     if(loop>10) then
      if ((fpm(6)/=0).and.(log10(theta)<(-fpm(3)))) testconv=.true.
-     end if
 
      !! Two loops minimum if spurious are found
      if ((loop<=1).and.(k>mode)) testconv=.false.
@@ -950,10 +681,6 @@ subroutine dfeast_srcix(ijob,N,Ze,work,workc,Aq,Sq,fpm,epsout,loop,Emin,Emax,M0,
         call wwrite_d(fout,theta)
         call wwrite_n(fout) 
      end if
-     
-     if(loop<10 .and. loop<fpm(4)) then
-        testconv=.false.
-     end if
 
      if (.not.testconv) then
         epsout=trace
@@ -963,9 +690,11 @@ subroutine dfeast_srcix(ijob,N,Ze,work,workc,Aq,Sq,fpm,epsout,loop,Emin,Emax,M0,
         endif
      endif
 
-    !make epsout be the eigenvector residual rather than the trace residual
-     if (fpm(6)/=0) epsout=theta
-
+    !make epsout be the eigenvector residual rather than the trace residual`    
+     if (fpm(6)/=0) then 
+         epsout=theta
+     end if
+ 
   end if
 
 
@@ -1814,12 +1543,9 @@ subroutine zfeast_hrcix(ijob,N,Ze,work,workc,zAq,zSq,fpm,epsout,loop,Emin,Emax,M
         enddo
      end if
 
-    if(loop>10) then
      if (mode==0) info=1  ! no eigenvalue detected in the interval
-    end if
-
      if (loop>1) then! wait second iteration (spurious related)
-        !if ((mode==M0).and.(mode/=N)) info=3 !size subspace too small
+        if ((mode==M0).and.(mode/=N)) info=3 !size subspace too small
      endif
      if (info/=0) fpm(21)=100 ! The End
   end if
@@ -1841,9 +1567,7 @@ subroutine zfeast_hrcix(ijob,N,Ze,work,workc,zAq,zSq,fpm,epsout,loop,Emin,Emax,M
      end if
 
      !! residual convergence
-     if(loop>10) then
      if ((fpm(6)/=0).and.(log10(theta)<(-fpm(3)))) testconv=.true.
-     end if
 
      !! Two loops minimum if spurious are found
      if ((loop<=1).and.(k>mode)) testconv=.false.
@@ -1860,12 +1584,7 @@ subroutine zfeast_hrcix(ijob,N,Ze,work,workc,zAq,zSq,fpm,epsout,loop,Emin,Emax,M
         call wwrite_d(fout,theta)
         call wwrite_n(fout) 
      end if
-    
-    if(loop<10 .and. loop<fpm(4)) then
-        testconv=.false.
-    end if
-    
-     
+
      if (.not.testconv) then
         epsout=trace
         if (loop==fpm(4)) then
@@ -1880,7 +1599,8 @@ subroutine zfeast_hrcix(ijob,N,Ze,work,workc,zAq,zSq,fpm,epsout,loop,Emin,Emax,M
      end if
   end if
 
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!!!! FEAST exit IF Convergence - FEAST iteration IF NOT 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!            
 
@@ -3164,13 +2884,6 @@ endif
            testconv=.true. ! return final eigenvector anyway
         endif
      endif
-
-    !make epsout be the eigenvector residual rather than the trace residual
-    
-     if (fpm(6)/=0) then 
-         epsout=theta
-     end if
-     
   end if
 
 

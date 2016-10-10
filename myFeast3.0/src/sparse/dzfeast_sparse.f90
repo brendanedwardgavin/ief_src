@@ -82,12 +82,6 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
-
-
-
-
-
-
   subroutine dfeast_scsrgvx(UPLO,N,sa,isa,jsa,sb,isb,jsb,fpm,epsout,loop,Emin,Emax,M0,E,X,mode,res,info,Zne,Wne)
     !  Purpose 
     !  =======
@@ -3171,14 +3165,11 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     complex(kind=(kind(1.0d0))), dimension(1:fpm(8)) :: Zne,Wne 
-    complex(kind=(kind(1.0d0))), dimension(:),pointer :: sb ! identity
-    integer,dimension(:),pointer :: isb
-    integer,dimension(:),pointer :: jsb
+    complex(kind=(kind(1.0d0))), dimension(n) :: sb ! identity
+    integer,dimension(n+1) :: isb
+    integer,dimension(n) :: jsb
     integer :: i
 
-    call wallocate_1z(sb,n,info)
-    call wallocate_1i(isb,n+1,info)
-    call wallocate_1i(jsb,n,info)
 
     call zfeast_gcontour(Emid,r,fpm(8),fpm(17),fpm(18),fpm(19),Zne,Wne)
 

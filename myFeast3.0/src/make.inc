@@ -26,9 +26,7 @@ CFLAGS = -O3 -fopenmp
 
 #F1- Intel Fortran Compiler (work with option 1 above; Mandatory for Option #2 above)
 F90 = ifort 
-F90FLAGS = -O1 -openmp -fpp -traceback
-#F90FLAGS =  -openmp -fpp -traceback
-#F90FLAGS = -O3
+F90FLAGS = -O3 -openmp -fpp   
 
 ##F2- Gnu Fortran Compiler (work with option 1 above)
 #F90 = gfortran 
@@ -46,11 +44,11 @@ F90FLAGS = -O1 -openmp -fpp -traceback
 
 #>>>>> Remark: three example P1-P2-P3 (for example: mpiifort, mpif90.mpich2, mpif90.openmpi, etc.)
 
-##P1- Intel MPI
-#MPI= mpiifort -f90=$(F90) 
+#P1- Intel MPI
+MPI= mpiifort -f90=$(F90) 
 
 ##P2- mpich2
-MPI    = mpif90.mpich2 -f90=$(F90)
+#MPI    = mpif90.mpich2 -f90=$(F90)
 
 ##P3- openmpi ...requires shell environment variable "OMPI_FC=$(F90)"
 #export OMPI_FC=$(F90) # for BASH shell
