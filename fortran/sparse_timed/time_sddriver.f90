@@ -101,7 +101,7 @@ call initrundata(fpm(2),m0,fpm(4),fpm(50)*fpm(51))
 
   !call time_szfeastgmres(UPLO,n,dsa,isa,jsa,fpm,emin,emax,m0,outname) 
 
-call system_clock(count=startcount)
+    call system_clock(count=startcount)
   call dfeast_scsrevit(UPLO,n,dsa,isa,jsa,fpm,epsout,loop,emin,emax,m0,E,X,mode,res,info)
 call system_clock(count=endcount)
 totaltime=elapsed_time(startcount,endcount)

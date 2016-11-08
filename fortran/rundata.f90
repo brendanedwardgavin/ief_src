@@ -104,6 +104,15 @@ module rundata
                if(dist>mindist) mindist=dist
             end do
             print *,'cp ',i,mindist
+            print *,'      ',cpval(i)
+        end do
+    end subroutine
+
+    subroutine printCpVal()
+        print *,''
+        print *,'CP Vals:'
+        do i=1,ncp
+            print *,i,cpval(i)
         end do
     end subroutine
 

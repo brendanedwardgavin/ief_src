@@ -62,8 +62,16 @@
     integer,dimension(n+1) :: isb
     integer,dimension(n) :: jsb
     integer :: i
+    double precision :: delta
 
-    call zfeast_contour(Emin,Emax,fpm(2),fpm(16),fpm(18),Zne,Wne)
+    if(fpm(55)==0) then
+        call zfeast_contour(Emin,Emax,fpm(2),fpm(16),fpm(18),Zne,Wne)
+    else
+        delta=(Emax-Emin)/fpm(2)
+        do i=1,fpm(2)
+            call zfeast_contour(Emin+(i-1)*delta,Emin+i*delta,1,fpm(16),fpm(18),Zne(i),Wne(i))
+        end do
+    end if
 
     fpm(29)=1 ! flag to inform expert routine that Zne,Wne generated using default contour
     ! identity B matrix- option for standard eigenvalue problem
