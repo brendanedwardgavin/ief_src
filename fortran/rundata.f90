@@ -13,13 +13,15 @@ module rundata
 
     !(feast it,rhs #)
     double precision, dimension(:,:),allocatable :: ritzvals
+    double precision, dimension(:), allocatable :: ratfunc
 
     !(feast it)
     double precision, dimension(:), allocatable :: eigtime,eigres
     double precision, dimension(:,:), allocatable :: eigresall
     
     !(cp #)
-    complex (kind=kind(0.0d0)), dimension (:), allocatable :: cpval
+    complex (kind=kind(0.0d0)), dimension (:), allocatable :: cpval,znesave
+    double precision, dimension(:), allocatable :: wnesave
 
     !timing data:
     double precision :: qrtime,lstime,gstime,arnolditime,mvtime,totaltime
@@ -61,9 +63,9 @@ module rundata
         maxfeastit=mfeastit
         maxlinit=mlinit
         
-        allocate(linres(0:maxfeastit,ncp,maxlinit,m0d), lintime(0:maxfeastit,ncp,maxlinit,m0d))
+        allocate(linres(0:maxfeastit,ncp,maxlinit,m0d), lintime(0:maxfeastit,ncp,maxlinit,m0d),ratfunc(m0d))
         allocate(linit(0:maxfeastit,ncp,m0d))
-        allocate(eigtime(0:maxfeastit),eigres(0:maxfeastit),eigresall(0:maxfeastit,m0d),cpval(ncp))
+        allocate(eigtime(0:maxfeastit),eigres(0:maxfeastit),eigresall(0:maxfeastit,m0d),cpval(ncp),wnesave(ncp),znesave(ncp))
         allocate(nmatvec(0:maxfeastit,ncp))
         allocate(ritzvals(0:maxfeastit,m0d))
 
@@ -79,6 +81,7 @@ module rundata
         linres=-1.0d0
         linit=0
         ritzvals=0.0d0
+        ratfunc=0.0d0
     end subroutine initrundata
 
     subroutine printTimes()
@@ -119,9 +122,11 @@ module rundata
     subroutine savedata(feastloop)
         implicit none 
         integer :: feastloop
-        integer :: i,j,k
+        integer :: i,j,k,temp
         character(len=100) :: cpstr,m0str
-   
+  
+        double precision, dimension(:),allocatable :: delta
+
         write(m0str,"(I5)") m0d 
 
         !save eigenvector residuals:
@@ -133,13 +138,33 @@ module rundata
         end do
         close(10) 
 
-        !save eigenvector residuals
+        !save all eigenvector residuals
         open(unit=10,file='../output/'//trim(outname)//'_eigresidualsall.dat',status='REPLACE')
         do i=0,feastloop
             write (10,"(I3)",advance="no") i+1
             write (10,"("//m0str//"ES15.5)") (eigresall(i,k), k=1,m0d)
         end do
         close(10)       
+
+        !save eigenvector convergence (from residuals)
+        open(unit=10,file='../output/'//trim(outname)//'_eigconv.dat',status='REPLACE')
+        write (10,"(I3, ES15.5)") 1,0.0d0
+        do i=1,feastloop
+            write (10,"(I3, ES15.5)") i+1,eigres(i)/eigres(i-1)
+        end do
+        close(10)
+   
+
+        !save all eigenvector residuals
+        open(unit=10,file='../output/'//trim(outname)//'_eigconvall.dat',status='REPLACE')
+        write (10,"(I3)",advance="no") 0
+        write (10,"("//m0str//"ES15.5)") 0.0d0, k=1,m0d)
+        do i=1,feastloop
+            write (10,"(I3)",advance="no") i+1
+            write (10,"("//m0str//"ES15.5)") (eigresall(i,k)/eigresall(i-1,k), k=1,m0d)
+        end do
+        close(10)       
+
 
         !save linear system iterations: 
         do i=1,ncp
@@ -151,6 +176,35 @@ module rundata
             end do
             close(10)
         end do
+
+        !save total and average linear system iterations at each cp:
+        do i=1,ncp
+            write(cpstr,"(I5)") i
+            open(unit=10,file='../output/'//trim(outname)//'_linsysittotalcp'//trim(adjustl(cpstr))//'.dat',status='REPLACE')
+            do j=0,feastloop
+                temp=0
+                do k=1,m0d
+                    temp=temp+linit(j,i,k)
+                enddo
+                write (10,"(I3)",advance="no") j+1
+                write (10, "(I4,F4.1)") temp,(1.0d0*temp)/(1.0d0*m0d)
+            end do
+            close(10)
+        end do
+
+
+        !save total linear system iterations and total matvecs at each FEAST iteration
+        open(unit=10,file='../output/'//trim(outname)//'_linsystotalmatvec.dat',status='REPLACE')
+        do j=0,feastloop     
+           temp=0
+           do i=1,ncp
+                do k=1,m0d
+                    temp=temp+linit(j,i,k)
+                end do
+           end do
+           write(10,"2I4") j+1,temp
+        end do 
+        close(10)
 
         !save ritz values
         open(unit=10,file='../output/'//trim(outname)//'_ritzvals.dat',status='REPLACE')
@@ -166,6 +220,14 @@ module rundata
             write (10,"(2ES15.5)") dble(cpval(i)),aimag(cpval(i))
         end do 
         close(10)
+
+        !measure and save theoretical convergence rate
+        do i=1,ncp
+           !find smallest distance of the current cp to an eigenvalue
+           !add alpah*abs(wne(i)*1/abs(mindist))
+        end do
+        !udpate each entry in delta for each eigenvalue using ratfunc
+        !save file
        
     end subroutine savedata
 end module

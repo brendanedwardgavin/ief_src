@@ -106,6 +106,7 @@ call initrundata(fpm(2),m0,fpm(4),fpm(50)*fpm(51))
 call system_clock(count=endcount)
 totaltime=elapsed_time(startcount,endcount)
 
+    call dfeast_rationalx(znesave,wnesave,fpm(2),E,m0,ratfunc)
     !save collected data:
    call savedata(loop) 
 

@@ -437,6 +437,8 @@ call wallocate_1d(nres,M0,infoloc) ! dummy
               cpnum=1
           end if
           cpval(cpnum)=ze
+          znesave=Zne
+          wnesave=Wne
           !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
           if (fpm(11)==0) then
