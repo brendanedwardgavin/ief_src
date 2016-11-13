@@ -1,0 +1,5 @@
+flags=-fpp -mkl -traceback #-check all
+all:	
+	ifort rundata.f90 ../feast_gmres.f90 ../dzlsprim.f90 ../iterative_feast.f90 time_sddriver.f90 ../../myFeast3.0/lib/x64/libfeast.a  $(flags) -o ../../bin/time_sddriver
+	ifort lapack_dddriver.f90 ../../myFeast3.0/lib/x64/libfeast.a  $(flags) -o ../../bin/lapack_dddriver
+	ifort convrate.f90 ../../myFeast3.0/lib/x64/libfeast.a  $(flags) -o ../../bin/convrate

@@ -1,0 +1,5 @@
+function blockQR(A)
+	
+end
+
+

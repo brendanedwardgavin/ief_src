@@ -5,16 +5,13 @@ include("../feast_lin.jl")
 #generate initial eigenvalue distribution
 
 #n=545
-n=26
-nin=20
+n=10
+nin=4
 eigmax=5
 lmin=0
-density=10/(eigmax-lmin)
+density=n/(eigmax-lmin)
 lmax=lmin+nin/density
-nc=3
-
-inmin=21
-inmax=26
+nc=8
 
 println(lmax," ",eigmax)
 
@@ -29,7 +26,7 @@ function seigdist(x)
 
 	if (x<=lmax && x>=lmin)
 		#return 50/2
-		return density*4
+		return density
 	elseif x>lmax
 		#return 495/abs(eigmax-1.01)
 		return density
@@ -39,11 +36,11 @@ function seigdist(x)
 end
 
 l=geneigs(n,seigdist,lmin,eigmax)
-lin=geneigs(nin,seigdist,lmin,lmax)
+#lin=geneigs(nin,seigdist,lmin,lmax)
 #lin=geneigs(nin,seigdist,-1,1)
-lout=geneigs(n-nin,seigdist,lmax,eigmax)
+#lout=geneigs(n-nin,seigdist,lmax,eigmax)
 
-l=[lin;lout]
+#l=[lin;lout]
 
 nin=0
 
@@ -61,47 +58,36 @@ A=diagm(l)
 
 #use one FEAST multiplication rho*identity to get new eigenvalue distribution
 
-lminfeast=(l[inmin]+l[inmin-1])/2
-lmaxfeast=(l[inmax]+l[inmax+1])/2
-newX=rhomult(A,eye(n),nc,lminfeast,lmaxfeast)
+newX=rhomult(A,eye(n),nc,lmin,lmax)
 
 newX=-1.0*newX
 
 #save old and new distributions as DAT files
 
 open("xin.dat","w") do file
-	for i in 1:n
-		if (i>=inmin && i<=inmax)
+	for i in 1:nin
 		write(file,"$(l[i])  0.0\n")
-		end
 	end
 end
 
 open("xout.dat","w") do file
-	for i in 1:n
-		if !(i>=inmin && i<=inmax)
+	for i in nin+1:n
 		write(file,"$(l[i])  0.0\n")
-		end
-	end	
+	end
 end
 
 
 open("newxin.dat","w") do file
-	for i in 1:n
-		if (i>=inmin && i<=inmax)
-			write(file,"$(newX[i,i])  0.0\n")
-		end
+	for i in 1:nin
+		write(file,"$(newX[i,i])  0.0\n")
 	end
 end
 
 
 open("newxout.dat","w") do file
-	for i in 1:n
-		if !(i>=inmin && i<=inmax)
-			write(file,"$(newX[i,i])  0.0\n")
-		end
+	for i in nin+1:n
+		write(file,"$(newX[i,i])  0.0\n")
 	end
-	
 end
 
 #save contour and contour points too?

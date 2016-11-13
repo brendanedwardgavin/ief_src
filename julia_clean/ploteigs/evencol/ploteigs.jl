@@ -5,16 +5,16 @@ include("../feast_lin.jl")
 #generate initial eigenvalue distribution
 
 #n=545
-n=26
-nin=20
+n=10
+nin=4
 eigmax=5
 lmin=0
-density=10/(eigmax-lmin)
+density=n/(eigmax-lmin)
 lmax=lmin+nin/density
 nc=3
 
-inmin=21
-inmax=26
+inmin=5
+inmax=6
 
 println(lmax," ",eigmax)
 
@@ -29,7 +29,7 @@ function seigdist(x)
 
 	if (x<=lmax && x>=lmin)
 		#return 50/2
-		return density*4
+		return density
 	elseif x>lmax
 		#return 495/abs(eigmax-1.01)
 		return density
@@ -39,11 +39,11 @@ function seigdist(x)
 end
 
 l=geneigs(n,seigdist,lmin,eigmax)
-lin=geneigs(nin,seigdist,lmin,lmax)
+#lin=geneigs(nin,seigdist,lmin,lmax)
 #lin=geneigs(nin,seigdist,-1,1)
-lout=geneigs(n-nin,seigdist,lmax,eigmax)
+#lout=geneigs(n-nin,seigdist,lmax,eigmax)
 
-l=[lin;lout]
+#l=[lin;lout]
 
 nin=0
 

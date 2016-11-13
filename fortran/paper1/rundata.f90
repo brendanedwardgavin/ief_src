@@ -130,7 +130,7 @@ module rundata
         write(m0str,"(I5)") m0d 
 
         !save eigenvector residuals:
-        open(unit=10,file='../output/'//trim(outname)//'_eigresiduals.dat',status='REPLACE')
+        open(unit=10,file=trim(outname)//'_eigresiduals.dat',status='REPLACE')
         do i=0,feastloop
             write (10,"(I3, 2ES15.5)") i+1,eigtime(i),eigres(i)
             !write (10,"(I3, 3ES15.5, F8.2)") i,timelist(i),reslist(i),linsysreslist(i),linsysitavg(i)
@@ -139,7 +139,7 @@ module rundata
         close(10) 
 
         !save all eigenvector residuals
-        open(unit=10,file='../output/'//trim(outname)//'_eigresidualsall.dat',status='REPLACE')
+        open(unit=10,file=trim(outname)//'_eigresidualsall.dat',status='REPLACE')
         do i=0,feastloop
             write (10,"(I3,ES15.5)",advance="no") i+1,eigtime(i)
             write (10,"("//m0str//"ES15.5)") (eigresall(i,k), k=1,m0d)
@@ -147,7 +147,7 @@ module rundata
         close(10)       
 
         !save eigenvector convergence (from residuals)
-        open(unit=10,file='../output/'//trim(outname)//'_eigconv.dat',status='REPLACE')
+        open(unit=10,file=trim(outname)//'_eigconv.dat',status='REPLACE')
         write (10,"(I3, ES15.5)") 1,0.0d0
         do i=1,feastloop
             write (10,"(I3, ES15.5)") i+1,eigres(i)/eigres(i-1)
@@ -156,7 +156,7 @@ module rundata
    
 
         !save all eigenvector convergence rates
-        open(unit=10,file='../output/'//trim(outname)//'_eigconvall.dat',status='REPLACE')
+        open(unit=10,file=trim(outname)//'_eigconvall.dat',status='REPLACE')
         write (10,"(I3)",advance="no") 0
         write (10,"("//m0str//"ES15.5)") (0.0d0, k=1,m0d)
         do i=1,feastloop
@@ -169,7 +169,7 @@ module rundata
         !save linear system iterations: 
         do i=1,ncp
             write(cpstr,"(I5)") i
-            open(unit=10,file='../output/'//trim(outname)//'_linsysit'//trim(adjustl(cpstr))//'.dat',status='REPLACE')
+            open(unit=10,file=trim(outname)//'_linsysit'//trim(adjustl(cpstr))//'.dat',status='REPLACE')
             do j=0,feastloop
                 write (10,"(I3)",advance="no") j+1
                 write (10, "("//m0str//"I4)") (linit(j,i,k), k=1,m0d)
@@ -180,7 +180,7 @@ module rundata
         !save total and average linear system iterations at each cp:
         do i=1,ncp
             write(cpstr,"(I5)") i
-            open(unit=10,file='../output/'//trim(outname)//'_linsysittotalcp'//trim(adjustl(cpstr))//'.dat',status='REPLACE')
+            open(unit=10,file=trim(outname)//'_linsysittotalcp'//trim(adjustl(cpstr))//'.dat',status='REPLACE')
             do j=0,feastloop
                 temp=0
                 do k=1,m0d
@@ -194,7 +194,7 @@ module rundata
 
 
         !save total linear system iterations and total matvecs at each FEAST iteration
-        open(unit=10,file='../output/'//trim(outname)//'_linsystotalmatvec.dat',status='REPLACE')
+        open(unit=10,file=trim(outname)//'_linsystotalmatvec.dat',status='REPLACE')
         do j=0,feastloop     
            temp=0
            do i=1,ncp
@@ -207,7 +207,7 @@ module rundata
         close(10)
 
         !save ritz values
-        open(unit=10,file='../output/'//trim(outname)//'_ritzvals.dat',status='REPLACE')
+        open(unit=10,file=trim(outname)//'_ritzvals.dat',status='REPLACE')
         do j=0,feastloop
             write (10,"(I3)",advance="no") j+1
             write (10, "("//m0str//"ES15.5)") (ritzvals(j,k), k=1,m0d)
@@ -215,7 +215,7 @@ module rundata
         close(10)
         
         !save contour point values
-        open(unit=10,file='../output/'//trim(outname)//'_cpvals.dat',status='REPLACE')
+        open(unit=10,file=trim(outname)//'_cpvals.dat',status='REPLACE')
         do i=1,ncp
             write (10,"(2ES15.5)") dble(cpval(i)),aimag(cpval(i))
         end do 

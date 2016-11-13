@@ -9,14 +9,15 @@ function rhomult(A,X,nc,lmin,lmax)
 
 	(gauss_point,gauss_weight)=gausslegendre(nc)
 
-	Q=zeros(x)	
-
+	Q=zeros(X)	
+	r::Float64=(lmax-lmin)/2.0
+	
 	for k in 1:nc
 		theta::Float64=-1.0*(pi/2)*(gauss_point[k]-1)
 		zk::Complex{Float64}=(lmin+lmax)/2+r*exp(0+im*theta)
-		G=zk*B-A
+		G=zk*eye(n)-A
 		
-		Qk=\(G,x)
+		Qk=\(G,X)
 
 		Q=Q-(gauss_weight[k]/2)*real(r*exp(im*theta)*Qk)
 	end

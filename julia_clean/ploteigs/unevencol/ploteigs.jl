@@ -1,54 +1,57 @@
 
-include("../geneigs.jl")
-include("../feast_lin.jl")
+include("../../geneigs.jl")
+include("../../feast_lin.jl")
 
 #generate initial eigenvalue distribution
 
 #n=545
 n=26
-nin=20
+nin=6
+
 eigmax=5
-lmin=0
-density=10/(eigmax-lmin)
-lmax=lmin+nin/density
+eigmin=0
+density=10/(eigmax-eigmin)
+
+lmax=eigmax
+lmin=4/density
+#lmax=lmin+nin/density
 nc=3
 
-inmin=21
-inmax=26
+inmin=n-nin+1
+inmax=n-nin+2
 
 println(lmax," ",eigmax)
 
 #eigmax=1.1
 #eigmax=20.81
-
-
-
 #nin=50
 
 function seigdist(x)
-
-	if (x<=lmax && x>=lmin)
-		#return 50/2
-		return density*4
-	elseif x>lmax
-		#return 495/abs(eigmax-1.01)
-		return density
-	else
-		return 0
-	end
+	return density
 end
 
-l=geneigs(n,seigdist,lmin,eigmax)
-lin=geneigs(nin,seigdist,lmin,lmax)
-#lin=geneigs(nin,seigdist,-1,1)
-lout=geneigs(n-nin,seigdist,lmax,eigmax)
+function deigdist(x)
+	return density*x^2
+end
 
-l=[lin;lout]
+#l=geneigs(n,seigdist,eigmin,eigmax)
+#lin=geneigs(nin,seigdist,lmin,lmax)
+lin=geneigs(10,seigdist,eigmin,eigmax)
+lminfeast=(lin[5]+lin[4])/2
+lmaxfeast=(lin[6]+lin[7])/2
+
+#lout=geneigs(n-nin,deigdist,eigmin,lminfeast)#lmin)
+lout=geneigs(n-nin,deigdist,eigmin,lin[5])
+l=[lout;lin[5:10]]
+
+dl=lout[n-nin]-lin[5]
+lminfeast=(lout[n-nin]+lin[5])/2+0.45*dl
+ 
 
 nin=0
 
 for i in 1:n
-	if l[i]>=lmin && l[i]<=lmax
+	if l[i]>=lminfeast && l[i]<=lmaxfeast
 		nin=nin+1
 	end
 end
@@ -60,9 +63,8 @@ println("nin=$nin")
 A=diagm(l)
 
 #use one FEAST multiplication rho*identity to get new eigenvalue distribution
-
-lminfeast=(l[inmin]+l[inmin-1])/2
-lmaxfeast=(l[inmax]+l[inmax+1])/2
+#lminfeast=(l[inmin]+l[inmin-1])/2
+#lmaxfeast=l[26]+1.1*l[26]#(l[inmax]+l[inmax+1])/2
 newX=rhomult(A,eye(n),nc,lminfeast,lmaxfeast)
 
 newX=-1.0*newX
