@@ -1230,7 +1230,7 @@ use rundata
         enddo
      end if
 
-     if (mode==0) info=1  ! no eigenvalue detected in the interval
+     !if (mode==0) info=1  ! no eigenvalue detected in the interval
      if (loop>1) then ! wait second iteration (spurious related)
         if ((mode==M0).and.(mode/=N)) info=3 ! size subspace too small
      endif
@@ -1279,6 +1279,8 @@ use rundata
            testconv=.true. ! return final eigenvector anyway
         endif
      endif
+
+    if (mode==0) testconv=.false. !assume we'll find something, don't stop until we do
 
     !make epsout be the eigenvector residual rather than the trace residual`    
      if (fpm(6)/=0) then 

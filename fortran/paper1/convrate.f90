@@ -42,7 +42,7 @@ double precision :: repart,impart
 double precision, allocatable :: array(:)
 
 integer :: pc
-character(len=100) :: name
+character(len=100) :: name, inname
 character(len=1) UPLO,PRE,SHG,EG
 character(len=1) :: cc
 complex (kind=kind(0.0d0)),dimension(:),allocatable :: dsa,dca,ssa
@@ -70,10 +70,18 @@ double precision:: gammam1,gammai,delta,mrate,alpha,newdist,mindist,brate
 
 
 call feastinit(fpm)
+
+if(iargc()<2) then
+    print *,'Too few arguments. Usage:'
+    !print *,'time_sddriver <matrix base>  <input file base>  <output file base>'
+    print *,'convrate <matrix base>  <input/output file base>'
+    stop
+end if
 call getarg(1,name)
+call getarg(2,inname)
 
 !!!!!!!!!!!! DRIVER_FEAST_SPARSE input file  
-  open(10,file=trim(name)//'.in',status='old')
+  open(10,file=trim(inname)//'.in',status='old')
   read(10,*) SHG ! type of eigenvalue problem "General, Hermitian, Symmetric" 
   read(10,*) EG ! type of eigenvalue probl  g== sparse generalized, e== sparse standard
   read(10,*) PRE  ! "PRE"==(s,d,c,z) resp. (single real,double real,complex,double complex) 
@@ -134,7 +142,7 @@ print *,'Gammas:',gammam1,gammai
 !base convergence rate = gammam1/gammai
 brate=gammam1/gammai
 
-print *,"Base rate:",brate
+print *,"Base rate:",brate,log(brate)
 
 !modified convergence rate:
 delta=0.0d0
@@ -156,8 +164,13 @@ mrate=alpha*delta
 
 print *,'Delta=',delta
 
-print *,'Total rate=',mrate/gammai+brate
+print *,'Total rate=',mrate/gammai+brate,log(mrate/gammai+brate)
 
+open(unit=10,file=trim(inname)//'_convrate.dat',status='REPLACE')
+print *,'writing '//trim(inname)//'_convrate.dat'
+write(10,*) 'Base rate = ',brate,log(brate)
+write(10,*) 'Total rate = ',mrate/gammai+brate,log(mrate/gammai+brate)
+write(10,*) 'Delta = ', delta
+close(10)
 
 end program
-

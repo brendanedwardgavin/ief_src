@@ -132,7 +132,7 @@ module rundata
         !save eigenvector residuals:
         open(unit=10,file=trim(outname)//'_eigresiduals.dat',status='REPLACE')
         do i=0,feastloop
-            write (10,"(I3, 2ES15.5)") i+1,eigtime(i),eigres(i)
+            write (10,"(I5, 2ES15.5)") i+1,eigtime(i),eigres(i)
             !write (10,"(I3, 3ES15.5, F8.2)") i,timelist(i),reslist(i),linsysreslist(i),linsysitavg(i)
             !write(10,*) i,timelist(i),reslist(i),linsysreslist(i)
         end do
@@ -141,29 +141,38 @@ module rundata
         !save all eigenvector residuals
         open(unit=10,file=trim(outname)//'_eigresidualsall.dat',status='REPLACE')
         do i=0,feastloop
-            write (10,"(I3,ES15.5)",advance="no") i+1,eigtime(i)
+            write (10,"(I5,ES15.5)",advance="no") i+1,eigtime(i)
             write (10,"("//m0str//"ES15.5)") (eigresall(i,k), k=1,m0d)
         end do
         close(10)       
 
         !save eigenvector convergence (from residuals)
         open(unit=10,file=trim(outname)//'_eigconv.dat',status='REPLACE')
-        write (10,"(I3, ES15.5)") 1,0.0d0
+        write (10,"(I5, ES15.5)") 1,0.0d0
         do i=1,feastloop
-            write (10,"(I3, ES15.5)") i+1,eigres(i)/eigres(i-1)
+            write (10,"(I5, 2ES15.5)") i+1,eigres(i)/eigres(i-1), log(eigres(i)/eigres(i-1))
         end do
         close(10)
    
 
         !save all eigenvector convergence rates
         open(unit=10,file=trim(outname)//'_eigconvall.dat',status='REPLACE')
-        write (10,"(I3)",advance="no") 0
+        write (10,"(I5)",advance="no") 0
         write (10,"("//m0str//"ES15.5)") (0.0d0, k=1,m0d)
         do i=1,feastloop
-            write (10,"(I3)",advance="no") i+1
+            write (10,"(I5)",advance="no") i+1
             write (10,"("//m0str//"ES15.5)") (eigresall(i,k)/eigresall(i-1,k), k=1,m0d)
         end do
         close(10)       
+
+        open(unit=10,file=trim(outname)//'_eigconvallog.dat',status='REPLACE')
+        write (10,"(I5)",advance="no") 0
+        write (10,"("//m0str//"ES15.5)") (0.0d0, k=1,m0d)
+        do i=1,feastloop
+            write (10,"(I5)",advance="no") i+1
+            write (10,"("//m0str//"ES15.5)") (log(eigresall(i,k)/eigresall(i-1,k)), k=1,m0d)
+        end do
+        close(10)
 
 
         !save linear system iterations: 
@@ -171,8 +180,8 @@ module rundata
             write(cpstr,"(I5)") i
             open(unit=10,file=trim(outname)//'_linsysit'//trim(adjustl(cpstr))//'.dat',status='REPLACE')
             do j=0,feastloop
-                write (10,"(I3)",advance="no") j+1
-                write (10, "("//m0str//"I4)") (linit(j,i,k), k=1,m0d)
+                write (10,"(I5)",advance="no") j+1
+                write (10, "("//m0str//"I10)") (linit(j,i,k), k=1,m0d)
             end do
             close(10)
         end do
@@ -186,11 +195,29 @@ module rundata
                 do k=1,m0d
                     temp=temp+linit(j,i,k)
                 enddo
-                write (10,"(I3)",advance="no") j+1
-                write (10, "(I4,F4.1)") temp,(1.0d0*temp)/(1.0d0*m0d)
+                write (10,"(I5)",advance="no") j+1
+                write (10, *) temp,(1.0d0*temp)/(1.0d0*m0d)
             end do
             close(10)
         end do
+
+        !save average lin sys iterations at each FEAST iteration
+        open(unit=10,file=trim(outname)//'_linsysittotalavg.dat',status='REPLACE')
+        do j=0,feastloop
+            write(10,'(I6)',advance="no") j+1
+            do i=1,ncp
+                temp=0
+                do k=1,m0d
+                    temp=temp+linit(j,i,k)
+                end do
+                if(i<ncp) then
+                    write(10,'(A,F10.1)',advance="no") '  ',(1.0d0*temp)/(1.0d0*m0d)
+                else
+                    write(10,'(A,F10.1)') '  ',(1.0d0*temp)/(1.0d0*m0d)
+                end if
+            end do
+        end do
+        close(10)
 
 
         !save total linear system iterations and total matvecs at each FEAST iteration
@@ -202,14 +229,14 @@ module rundata
                     temp=temp+linit(j,i,k)
                 end do
            end do
-           write(10,"(2I4)") j+1,temp
+           write(10,*) j+1,temp
         end do 
         close(10)
 
         !save ritz values
         open(unit=10,file=trim(outname)//'_ritzvals.dat',status='REPLACE')
         do j=0,feastloop
-            write (10,"(I3)",advance="no") j+1
+            write (10,"(I5)",advance="no") j+1
             write (10, "("//m0str//"ES15.5)") (ritzvals(j,k), k=1,m0d)
         end do
         close(10)
