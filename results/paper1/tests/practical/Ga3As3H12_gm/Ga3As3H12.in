@@ -5,7 +5,7 @@ L !UPLO
 -10.0 !emin
 -0.5 !emax
 20 !m0 for 15 eigs
-13 !#fpm
+12 !#fpm
 1 1 !comments
 2 4 !contour points
 3 10 !tol
