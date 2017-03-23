@@ -66,11 +66,17 @@
 
     if(fpm(55)==0) then
         call zfeast_contour(Emin,Emax,fpm(2),fpm(16),fpm(18),Zne,Wne)
-    else
+    elseif(fpm(55)==1) then
         delta=(Emax-Emin)/fpm(2)
         do i=1,fpm(2)
-            call zfeast_contour(Emin+(i-1)*delta,Emin+i*delta,1,fpm(16),fpm(18),Zne(i),Wne(i))
+            call zfeast_contour(Emin+(i-1)*delta,Emin+i*delta,1,fpm(16),fpm(2)*fpm(18),Zne(i),Wne(i))
         end do
+    elseif(fpm(55)==2) then
+         !set contour points, then flatten them on to real axis
+         call zfeast_contour(Emin,Emax,fpm(2),fpm(16),fpm(18),Zne,Wne)
+         do i=1,fpm(2)
+            Zne(i)=Zne(i)-(0.0d0,1.0d0)*aimag(Zne(i))
+         end do
     end if
 
     fpm(29)=1 ! flag to inform expert routine that Zne,Wne generated using default contour
@@ -156,7 +162,7 @@ subroutine dfeast_scsrgvxit(UPLO,N,sa,isa,jsa,sb,isb,jsb,fpm,epsout,loop,Emin,Em
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     integer :: ijob,infoloc,i,s
     complex(kind=(kind(1.0d0))) :: Ze
-    complex(kind=(kind(1.0d0))), dimension(:,:),pointer ::workc,caux
+    complex(kind=(kind(1.0d0))), dimension(:,:),allocatable ::workc,caux
     double precision, dimension(:,:),pointer ::work,Aq,Sq
     complex(kind=(kind(1.0d0))),dimension(:,:),pointer :: saz
     integer,dimension(:),pointer :: isaz,jsaz
@@ -182,8 +188,8 @@ integer :: infob,itmax
 
     !!!!!!!!!! iterative solver
     complex(kind=(kind(1.0d0))) :: ze2 
-    complex(kind=(kind(1.0d0))), dimension(:,:), pointer :: ztempmat
-    complex(kind=(kind(1.0d0))),dimension(:),pointer :: zsa
+    complex(kind=(kind(1.0d0))), dimension(:,:), allocatable:: ztempmat
+    complex(kind=(kind(1.0d0))),dimension(:),allocatable :: zsa
     integer :: linresindex !number of RHS to use in measuring linear system error
     integer :: blockits,blockremainder
     double precision :: lintargeterror,linsyserror !goal error for linear system, return linear system error
@@ -205,6 +211,12 @@ integer :: infob,itmax
     matdescra(2)=UPLO
     matdescra(3)='N'
     matdescra(4)='F'
+
+    if(fpm(11)==3 .and. (fpm(53) .ne. 1)) then
+        print *,'To use minres, need to set block size (fpm 53)  to 1'
+        print *,'setting block size to 1 and continuing'
+        fpm(53)=1
+    end if
 
     rank=0
     nb_procs=1
@@ -313,7 +325,8 @@ integer :: infob,itmax
     call wallocate_2d(Aq,M0,M0,infoloc)
     call wallocate_2d(Sq,M0,M0,infoloc)
     call wallocate_2d(work,N,M0,infoloc)
-    call wallocate_2z(workc,N,M0,infoloc)
+    !call wallocate_2z(workc,N,M0,infoloc)
+    allocate(workc(n,m0))
     if (infoloc/=0) then
        info=-1
        return
@@ -362,8 +375,8 @@ integer :: infob,itmax
        call zdaddcsr(N,opt,ONEC,ssa,sisa,sjsa,ONEC,ssb,sisb,sjsb,saz,isaz,jsaz) !! get jsaz
     end if
 !!!!!!!!!!!!!!!
-    call wallocate_2z(caux,N,M0,infoloc)
-
+    !call wallocate_2z(caux,N,M0,infoloc)
+    allocate(caux(n,m0))
 
     if (infoloc/=0) then
        info=-1
@@ -392,8 +405,10 @@ integer :: infob,itmax
 !!!!!!!!!!
 
     if (fpm(11)>0) then
-        call wallocate_1z(zsa,nnza,infoloc)
-        call wallocate_2z(ztempmat,n,m0,infoloc)
+        !call wallocate_1z(zsa,nnza,infoloc)
+        allocate(zsa(nnza))
+        !call wallocate_2z(ztempmat,n,m0,infoloc)
+        allocate(ztempmat(n,m0))
         zsa=(1.0d0,0.0d0)*sa(1:nnza)
 
 call wallocate_1d(nres,M0,infoloc) ! dummy
@@ -497,7 +512,8 @@ call wallocate_1d(nres,M0,infoloc) ! dummy
                   linresindex=m0
               end if
 
-              if(epsout <=1.0d-1 .and. loop>0) then
+              !if(epsout <=1.0d-1 .and. loop>0) then
+              if(loop>0 .and. (epsout .ne. 0.0d0)) then
                   if(fpm(54)==0) then
                       lintargeterror=1.0d-2*epsout
                   else
@@ -508,6 +524,8 @@ call wallocate_1d(nres,M0,infoloc) ! dummy
               else
                   lintargeterror=1d-1
               endif          
+
+                
 
               !if (loop<3) linresindex=m0
               !if(fpm(11)==2) then !block CGLS
@@ -556,6 +574,8 @@ call wallocate_1d(nres,M0,infoloc) ! dummy
                     if(fpm(11)==1) call blockGMRESarnoldi(UPLO,n,fpm(53),zsa,isa,jsa,ze2,fpm(51),fpm(50),workc(1,1+(i-1)*fpm(53)),ztempmat(1,1+(i-1)*fpm(53)),lintargeterror,linloops,1+(i-1)*fpm(53)) 
                     if(fpm(11)==2) call zfeast_cglsRes(UPLO,n,fpm(53),zsa,isa,jsa,ze2,nnza,workc(1,1+(i-1)*fpm(53)),ztempmat(1,1+(i-1)*fpm(53)),fpm(51)*fpm(50),lintargeterror,linresindex,linsyserror,linloops)
                     !workc(1+(i-1)*fpm(53):i*fpm(53),1:n)=ztempmat(1:fpm(53),1:n)
+                    if(fpm(11)==3) call zminres(UPLO,n,zsa,isa,jsa,ze2,workc(1,1+(i-1)*fpm(53)),ztempmat(1,1+(i-1)*fpm(53)),lintargeterror,fpm(51),linloops)    
+                    if(fpm(11)==4) call zminresBlock(UPLO,n,fpm(53),zsa,isa,jsa,ze2,workc(1,1+(i-1)*fpm(53)),ztempmat(1,1+(i-1)*fpm(53)),lintargeterror,fpm(51),linloops,1+(i-1)*fpm(53))
                     linit(feastit,cpnum,1+(i-1)*fpm(53):i*fpm(53))=linloops
                     !print *,'block ',i,linloops
 
@@ -565,11 +585,13 @@ call wallocate_1d(nres,M0,infoloc) ! dummy
                     linresindex=blockremainder
                     if(fpm(11)==1) call blockGMRESarnoldi(UPLO,n,blockremainder,zsa,isa,jsa,ze2,fpm(51),fpm(50),workc(1,1+(i-1)*fpm(53)),ztempmat(1,1+(i-1)*fpm(53)),lintargeterror,linloops,1+(i-1)*fpm(53))
                     if(fpm(11)==2) call zfeast_cglsRes(UPLO,n,blockremainder,zsa,isa,jsa,ze2,nnza,workc(1,1+(i-1)*fpm(53)),ztempmat(1,1+(i-1)*fpm(53)),fpm(51)*fpm(50),lintargeterror,linresindex,linsyserror,linloops)
+                    if(fpm(11)==3) call zminres(UPLO,n,zsa,isa,jsa,ze2,workc(1,1+(i-1)*fpm(53)),ztempmat(1,1+(i-1)*fpm(53)),lintargeterror,fpm(51),linloops)
+                    if(fpm(11)==4) call zminresBlock(UPLO,n,blockremainder,zsa,isa,jsa,ze2,workc(1,1+(i-1)*fpm(53)),ztempmat(1,1+(i-1)*fpm(53)),lintargeterror,fpm(51),linloops,1+(i-1)*fpm(53))
                     linit(feastit,cpnum,1+(i-1)*fpm(53):m0)=linloops
                 end if
               end if
               if(cpnum==1) print *,''
-              print *, 'lin sys',cpnum,sum(linit(feastit,cpnum,1:m0))/m0
+              print *, 'lin sys',cpnum,maxval(linit(feastit,cpnum,1:m0))!/m0
               workc=ztempmat
         end if
 
@@ -622,8 +644,8 @@ call wallocate_1d(nres,M0,infoloc) ! dummy
     call wdeallocate_2d(Aq)
     call wdeallocate_2d(Sq)
     call wdeallocate_2d(work)
-    call wdeallocate_2z(workc)
-    call wdeallocate_2z(caux)
+    !call wdeallocate_2z(workc)
+    !call wdeallocate_2z(caux)
 
 
     call wdeallocate_2z(saz)
@@ -1232,7 +1254,7 @@ use rundata
 
      !if (mode==0) info=1  ! no eigenvalue detected in the interval
      if (loop>1) then ! wait second iteration (spurious related)
-        if ((mode==M0).and.(mode/=N)) info=3 ! size subspace too small
+        !if ((mode==M0).and.(mode/=N)) info=3 ! size subspace too small
      endif
      if (info/=0) fpm(21)=100 ! The End
   end if
@@ -1280,7 +1302,7 @@ use rundata
         endif
      endif
 
-    if (mode==0) testconv=.false. !assume we'll find something, don't stop until we do
+    if (mode==0 .and. loop<fpm(4)) testconv=.false. !assume we'll find something, don't stop until we do
 
     !make epsout be the eigenvector residual rather than the trace residual`    
      if (fpm(6)/=0) then 

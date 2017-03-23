@@ -20,8 +20,8 @@ module rundata
     double precision, dimension(:,:), allocatable :: eigresall
     
     !(cp #)
-    complex (kind=kind(0.0d0)), dimension (:), allocatable :: cpval,znesave
-    double precision, dimension(:), allocatable :: wnesave
+    complex (kind=kind(0.0d0)), dimension (:), allocatable :: cpval,znesave,wnesave
+    double precision, dimension(:), allocatable :: cpweight
 
     !timing data:
     double precision :: qrtime,lstime,gstime,arnolditime,mvtime,totaltime
@@ -233,6 +233,49 @@ module rundata
         end do 
         close(10)
 
+
+        !save total matvecs so far and feast residual at each feast iteration
+        open(unit=10,file=trim(outname)//'_eigresVsMatvec.dat',status='REPLACE')
+        temp=0
+        do j=0,feastloop      
+           do i=1,ncp
+                do k=1,m0d
+                    temp=temp+linit(j,i,k)
+                end do
+           end do
+           write(10,*) j+1,temp,eigres(j) !save FEAST iteration, total #matvecs so far, feast residual
+        end do 
+        close(10)
+
+
+        !save total matvecs so far, adding only max matvec to simulate parallelism
+        open(unit=10,file=trim(outname)//'_eigresVsMatvecMax.dat',status='REPLACE')
+        temp=0
+        do j=0,feastloop      
+                do k=1,m0d
+                    !print *,linit(j,:,k)
+                    !print *,maxval(linit(j,:,k))
+                    !stop
+
+                    !!!temp=temp+maxval(linit(j,:,k))
+                end do
+                temp=temp+maxval(linit(j,:,:))
+                !print *,'MAXVAL'
+                !print *,maxval(linit(j,:,:))
+                !stop
+           write(10,*) j+1,temp,eigres(j) !save FEAST iteration, total #matvecs so far, feast residual
+        end do 
+        close(10)
+
+        open(unit=10,file=trim(outname)//'_linitMax.dat',status='REPLACE')
+        temp=0
+        do j=0,feastloop      
+               
+           write(10,*) j+1,maxval(linit(j,:,:)) !save FEAST iteration, total #matvecs so far, feast residual
+        end do 
+        close(10)
+
+
         !save ritz values
         open(unit=10,file=trim(outname)//'_ritzvals.dat',status='REPLACE')
         do j=0,feastloop
@@ -241,12 +284,31 @@ module rundata
         end do
         close(10)
         
-        !save contour point values
+        !save contour point values, so that we can associate them with the linear system measurements
         open(unit=10,file=trim(outname)//'_cpvals.dat',status='REPLACE')
         do i=1,ncp
-            write (10,"(2ES15.5)") dble(cpval(i)),aimag(cpval(i))
+            write (10,*) dble(cpval(i)),aimag(cpval(i))
         end do 
         close(10)
+
+        open(unit=10,file=trim(outname)//'_cpvals_hplot.dat',status='REPLACE')
+        do i=1,ncp
+            write (10,*) dble(cpval(i)),aimag(cpval(i))
+            write (10,*) dble(cpval(i)),-1.0d0*aimag(cpval(i))
+        end do 
+        close(10)
+
+        !save contour points and weights, so that we can plot filter function
+        open(unit=10,file=trim(outname)//'_zne.dat',status='REPLACE')
+        open(unit=11,file=trim(outname)//'_wne.dat',status='REPLACE')
+        do i=1,ncp
+            write (10,*) dble(znesave(i)),aimag(znesave(i))
+            write (11,*) wnesave(i)
+        end do 
+        close(10)
+        close(11)
+
+
 
         !measure and save theoretical convergence rate
         !do i=1,ncp

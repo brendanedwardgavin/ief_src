@@ -36,22 +36,22 @@ call feastinit(fpm)
 call getarg(1,name)
 
 !!!!!!!!!!!! DRIVER_FEAST_SPARSE input file  
-  open(10,file=trim(name)//'.in',status='old')
-  read(10,*) SHG ! type of eigenvalue problem "General, Hermitian, Symmetric" 
-  read(10,*) EG ! type of eigenvalue probl  g== sparse generalized, e== sparse standard
-  read(10,*) PRE  ! "PRE"==(s,d,c,z) resp. (single real,double real,complex,double complex) 
-  read(10,*) UPLO ! UPLO==(F,L,U) reps. (Full csr, Lower csr, Upper csr)
+!  open(10,file=trim(name)//'.in',status='old')
+!  read(10,*) SHG ! type of eigenvalue problem "General, Hermitian, Symmetric" 
+!  read(10,*) EG ! type of eigenvalue probl  g== sparse generalized, e== sparse standard
+!  read(10,*) PRE  ! "PRE"==(s,d,c,z) resp. (single real,double real,complex,double complex) 
+!  read(10,*) UPLO ! UPLO==(F,L,U) reps. (Full csr, Lower csr, Upper csr)
 
-  read(10,*) emin
-  read(10,*) emax
+!  read(10,*) emin
+!  read(10,*) emax
 
-  read(10,*) m0
-  read(10,*) pc ! Some changes from default for fpm
-  do i=1,pc
-     read(10,*) j,fpm(j)
-  enddo
+!  read(10,*) m0
+!  read(10,*) pc ! Some changes from default for fpm
+!  do i=1,pc
+!     read(10,*) j,fpm(j)
+!  enddo
 
-  close(10)
+!  close(10)
 
 
 !goto 100
@@ -78,6 +78,7 @@ call getarg(1,name)
   do i=1,nnza
      read(10,*) row,column,repart
      A(row,column)=(1.0d0,0.0d0)*repart
+     A(column,row)=A(row,column)
      !print *,ica(i),jca(i),dca(i)
   end do
 
@@ -122,7 +123,8 @@ end do
   allocate(e(n))
 
     print *,'diagonalizing'
-  call zheev('N',UPLO,n,A,n,e,work,lwork,rwork,info)
+  call zheev('N','U',n,A,n,e,work,lwork,rwork,info)
+
 
     !print *,'Eigenvalues:'
     !print *,''
@@ -131,10 +133,13 @@ end do
   !end do
     print *,'writing file'
     open(unit=10,file=trim(name)//'.eigs',status='REPLACE')
+   open(unit=11,file=trim(name)//'_plot.eigs',status='REPLACE') 
         write(10,*) n
         do i=1,n
             write(10, *) i,e(i)
+            write(11, *) e(i),0.0d0
         end do
     close(10)
+    close(11)
 end program
 

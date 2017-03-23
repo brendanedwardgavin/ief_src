@@ -1,0 +1,21 @@
+s
+e !eigenvalue problem type
+d !precision
+L !UPLO
+-0.1682610959879015 !emin
+0.3657465956896725  ! emax first 20 eigenvalues
+30  !200 !m0
+13 !#fpm
+1 1 !comments
+2 3 !contour points
+3 10 !tol
+4 25 !maxloop 
+6 1 !convergence
+11 1 ! 1: use gmres 2: use cgls 3:use bicgstab
+51 100 !lin sys krylov size
+50 5 !gmres iterations 
+53 1 !block size 
+54 10 !linear system accuracy
+55 0 !0:normal cp distribution, 1: same height distribution
+18 324 !ellipse 
+16 1 !integration type; 0=gauss, 1=trapezoid, 2=zolotarev

@@ -1,0 +1,21 @@
+s
+e !eigenvalue problem type
+d !precision
+F !UPLO
+1.57d0 !emin
+2.0d0  ! emax mid 20 eigenvalues
+20  !200 !m0
+13 !#fpm
+1 1 !comments
+2 4 !contour points
+3 10 !tol
+4 100 !maxloop 
+6 1 !convergence
+11 4 ! 1: use gmres 2: use cgls 3:minres 4: block minres
+51 700 !lin sys krylov size
+50 5 !gmres iterations 
+53 20 !block size 
+54 100 !linear system accuracy
+55 0 !0:normal cp distribution, 1: same height distribution
+18 100 !ellipse 
+16 1 !integration type; 0=gauss, 1=trapezoid, 2=zolotarev

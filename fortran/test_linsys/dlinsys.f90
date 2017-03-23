@@ -1,5 +1,5 @@
 program time_sddriver
-
+use rundata
 implicit none
 !#ifdef MPI
 !include "mpif.h"
@@ -11,7 +11,7 @@ double precision :: repart,impart
 
 integer :: pc
 character(len=100) :: name
-character(len=100) :: outname
+character(len=100) :: outname1
 
 character(len=1) UPLO,PRE,SHG,EG
 character(len=1) :: cc
@@ -27,25 +27,26 @@ double precision :: emin,emax
 
 
 !!!!!!!!!!!!!!!!!!!!!!! linear system
-
+integer :: linloops
 double precision, dimension(:,:), allocatable :: dB
 complex (kind=kind(0.0d0)),dimension(:,:), allocatable :: B,X,R,temp1,Bs
 integer :: nrhs
 complex (kind=kind(0.0d0)) :: ze
 
-double precision,external :: dznrm2
+double precision,external :: dznrm2,zlange
 double precision :: error,thenorm
 character, dimension(6) :: matdescra
-
+double precision, dimension(:),allocatable :: dwork
+integer :: loops
 
 call random_seed()
 
 call feastinit(fpm)
 call getarg(1,name)
 if (iargc()==2) then
-    call getarg(2,outname)
+    call getarg(2,outname1)
 else
-    outname=""
+    outname1=""
 end if
 
 !!!!!!!!!!!! DRIVER_FEAST_SPARSE input file  
@@ -123,44 +124,56 @@ matdescra(2)=UPLO
 matdescra(3)='N'
 matdescra(4)='F'
 
-Bs=(0.0d0,0.0d0)
-Bs(1,1)=(1.0d0,0.0d0)
-Bs(2,1)=(2.0d0,0.0d0)
-Bs(3,1)=(3.0d0,0.0d0)
-Bs(4,1)=(4.0d0,0.0d0)
-if(m0>1) then
-Bs(5,2)=(1.0d0,0.0d0)
-Bs(6,2)=(2.0d0,0.0d0)
-Bs(7,2)=(3.0d0,0.0d0)
-Bs(8,2)=(4.0d0,0.0d0)
-end if
-call mkl_zcsrmm('N', n, m0, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), Bs, n, (0.0d0,0.0d0), B, n)
 
-!call random_number(dB)
+!!!!!!!!!!preset rhs:
+!Bs=(0.0d0,0.0d0)
+!Bs(1,1)=(1.0d0,0.0d0)
+!Bs(2,1)=(2.0d0,0.0d0)
+!Bs(3,1)=(3.0d0,0.0d0)
+!Bs(4,1)=(4.0d0,0.0d0)
+!if(m0>1) then
+!Bs(5,2)=(1.0d0,0.0d0)
+!Bs(6,2)=(2.0d0,0.0d0)
+!Bs(7,2)=(3.0d0,0.0d0)
+!Bs(8,2)=(4.0d0,0.0d0)
+!end if
+!call mkl_zcsrmm('N', n, m0, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), Bs, n, (0.0d0,0.0d0), B, n)
+!!!!!!!!!!!!!!!!!!!!!
+
+!!!!! random rhs:
+call random_number(dB)
 !dB=0.0d0
 !dB(1,1)=1.0
 !dB(2,1)=2.5
 
-!B=(1.0d0,0.0d0)*dB
+B=(1.0d0,0.0d0)*dB
 
-ze=(0.0d0,0.0d0)
-
+!ze=(2.0d0,2.0d0)
+ze=(1.0d0,2.0d0)
+print *,'ze=',ze
 !call zfeast_cgls(UPLO,n,m0,dsa,isa,jsa,ze,nnza,B,X,100 )
 
-print *,'starting arnoldi'
+!print *,'starting arnoldi'
+call initrundata(fpm(2),m0,fpm(4),fpm(51)*fpm(50))
+!call blockGMRESarnoldi(UPLO,n,m0,dsa,isa,jsa,(0.0d0,0.0d0),fpm(51),fpm(50),B,X,1.0d-7,loops,1)
+!print *,'arnoldi done'
 
-call blockGMRESarnoldi(UPLO,n,m0,dsa,isa,jsa,100,2,B,X,1.0d-7)
+print *,'starting minres'
+!call zminres(UPLO,n,dsa,isa,jsa,ze,B,X,1.0d-16,fpm(51),linloops)
+call zminresBlock(UPLO,n,m0,dsa,isa,jsa,ze,B,X,1.0d-16,fpm(51),linloops,1)
+!call zminres(UPLO,n,   dsa,isa,jsa,ze,B,X,1.0d-16,fpm(51),linloops)
+print *,'minres done'
 
 print *,'Sol=',X(1,1)
 
-print *,'arnoldi done'
+
+
 
 !test convergence
 
-!temp1=X
-R=B
-call mkl_zcsrmm('N', n, m0, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), X, n, (1.0d0,0.0d0), R, n)
-!R=B-temp1
+temp1=X
+call mkl_zcsrmm('N', n, m0, n, (-1.0d0,0.0d0), matdescra, dsa, jsa, isa, isa(2), X, n, ze, temp1, n)
+R=B-temp1
 
 error=0.0d0
 do i=1,m0
@@ -168,7 +181,8 @@ do i=1,m0
     if (thenorm>error) error=thenorm
 end do
 
-print *,"Lin sys error = ",error
+allocate(dwork(n))
+print *,"Lin sys error = ",zlange('F',n,m0,R,n,dwork)/zlange('F',n,m0,B,n,dwork)
 
 end program
 

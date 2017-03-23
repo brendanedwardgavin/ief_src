@@ -1,5 +1,9 @@
 
 
+
+
+
+
 subroutine zprintMat(Mat,n,rowmax,colmax)
 integer :: n,colmax,rowmax,j,k
 complex (kind=kind(0.0d0)), dimension(n,*) :: Mat
@@ -256,6 +260,7 @@ do i=1,restarts
         if(error<eps) then 
             !Xlhs(1:n,1:m)=Xtmp
             !return
+            !print *,'   error=',error,eps
             exit
         end if
     end do

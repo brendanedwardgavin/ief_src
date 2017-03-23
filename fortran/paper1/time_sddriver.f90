@@ -29,6 +29,8 @@ double precision :: emin,emax,epsout
 double precision, dimension(:),allocatable :: E,res
 double precision, dimension(:,:),allocatable :: X
 
+integer :: temp
+
 call feastinit(fpm)
 if(iargc()<2) then
     print *,'Too few arguments. Usage:'
@@ -109,21 +111,47 @@ call initrundata(fpm(2),m0,fpm(4),fpm(50)*fpm(51))
 ! stop
 
   !call time_szfeastgmres(UPLO,n,dsa,isa,jsa,fpm,emin,emax,m0,outname) 
-
+print *,'calling feast'
     call system_clock(count=startcount)
   call dfeast_scsrevit(UPLO,n,dsa,isa,jsa,fpm,epsout,loop,emin,emax,m0,E,X,mode,res,info)
 call system_clock(count=endcount)
 totaltime=elapsed_time(startcount,endcount)
 
+
     call dfeast_rationalx(znesave,wnesave,fpm(2),E,m0,ratfunc)
+!if(fpm(11).ne.0) then
     !save collected data:
    call savedata(loop) 
-
+!end if
    !print out timing stuff:
    call printTimes()
 
     !print out minimum distance of contour points from spectrum:
     call printMinCpDist(E)
+
+    do i=1,mode
+        print *,i,E(i)
+    end do
+    print *,'------'
+    do i=mode+1,m0
+        print *,i,E(i)
+    end do
+
+temp=0
+        do j=0,loop
+                do i=1,fpm(2)
+                do k=1,m0
+                temp=temp+linit(j,i,k)
+                end do
+                end do
+        end do
+    print *,'Number of total matvec',temp+loop
+
+        temp=0
+        do j=0,loop
+                temp=temp+maxval(linit(j,:,:))
+        end do
+    print *,'Number of sequential matvec',temp+loop
 end program
 
 

@@ -106,7 +106,7 @@ call getarg(2,inname)
     else
         delta=(emax-emin)/fpm(2)
         do i=1,fpm(2)
-            call zfeast_contour(emin+(i-1)*delta,emin+i*delta,1,fpm(16),fpm(18),Zne(i),Wne(i))
+            call zfeast_contour(emin+(i-1)*delta,emin+i*delta,1,fpm(16),fpm(2)*fpm(18),Zne(i),Wne(i))
         end do
     end if
 
@@ -136,7 +136,7 @@ call quicksort(ratfunc,1,n)
 
 gammam1=ratfunc(n-(m0+1))
 gammai=ratfunc(n-neigs)
-
+print *,'neigs in cont:',neigs
 print *,'Gammas:',gammam1,gammai
 
 !base convergence rate = gammam1/gammai

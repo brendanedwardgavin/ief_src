@@ -1,0 +1,9 @@
+#flags=-fpp -heap-arrays -mkl -traceback -CB #-check all
+flags=-heap-arrays -check arg_temp_created -check bounds -g -fpp -mkl -traceback  #-check all
+#flags=-heap-arrays -fpp -mkl -O3
+bindir=../../bin
+feastdir=/opt/FEAST/3.0/lib/x64
+
+all:	
+	ifort rundata.f90 ../zminres.f90 ../feast_gmres.f90 ../dzlsprim.f90 ../iterative_feast.f90 time_sddriver.f90 $(feastdir)/libfeast.a  $(flags) -o $(bindir)/time_sddriver
+	ifort rundata.f90 ../zminres.f90 ../feast_gmres.f90 ../dzlsprim.f90 ../iterative_feast.f90 ../iterative_feastSVD.f90 time_sddriver_svd.f90 $(feastdir)/libfeast.a  $(flags) -o $(bindir)/time_sddriver_svd

@@ -206,6 +206,21 @@ module rundata
         end do 
         close(10)
 
+
+        !save total matvecs so far and feast residual at each feast iteration
+        open(unit=10,file='../output/'//trim(outname)//'_eigresVsMatvec.dat',status='REPLACE')
+        temp=0
+        do j=0,feastloop      
+           do i=1,ncp
+                do k=1,m0d
+                    temp=temp+linit(j,i,k)
+                end do
+           end do
+           write(10,"(2I4)") j+1,temp,eigres(j) !save FEAST iteration, total #matvecs so far, feast residual
+        end do 
+        close(10)
+
+
         !save ritz values
         open(unit=10,file='../output/'//trim(outname)//'_ritzvals.dat',status='REPLACE')
         do j=0,feastloop
